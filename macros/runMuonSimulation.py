@@ -68,6 +68,8 @@ p.add_option('--show-net',        action = 'store_true', default = False, help='
 p.add_option('--logy',            action = 'store_true', default = False, help='draw histograms with log Y')
 p.add_option('--veto-noise-cand', action = 'store_true', default = False, help='veto candidates containing noise hits')
 p.add_option('--do-pdf',          action = 'store_true', default = False, help='save figures as PDF')
+p.add_option('--has-rpc2-noise',  action = 'store_true', default = False, help='require noise hits in RPC2 later for event display')
+
 
 p.add_option('--outpath', '-o',   type='string',  default = None, help = 'output path for CSV file')
 p.add_option('--out-pickle',      type='string',  default = None, help = 'output path for pickle output file')
@@ -1375,6 +1377,9 @@ def simulateHits(event):
 #----------------------------------------------------------------------------------------------
 def drawEvent(event, candEvent=None):
 
+    '''DrawEvent - draw event display
+    '''
+
     miny =  6.5
     maxy = 10.1
     yoff = 0.011
@@ -1399,6 +1404,21 @@ def drawEvent(event, candEvent=None):
     zlin = []
     ylin = []
 
+    hitNoiseCounts = collections.Counter()
+
+    for hit in event.hits:
+        if hit.origin == Origin.NOISE and minz < hit.strip.zcenter and hit.strip.zcenter < maxz:
+            hitNoiseCounts[Layer.getDoublet(hit.strip.layer)] += 1
+
+    print(hitNoiseCounts)
+
+    if options.has_rpc2_noise:
+        if hitNoiseCounts[Layer.RPC2] == 0:
+            return
+
+    #
+    # Draw RPC layers
+    #
     fig, ax = plt.subplots(figsize=(15, 11))
     plt.subplots_adjust(hspace=0.0, bottom=0.06, left=0.06, top=0.97, right=0.99)
 
@@ -1418,6 +1438,9 @@ def drawEvent(event, candEvent=None):
     ax.annotate('RPC2 doublet', (minz + 0.007*(maxz-minz), layerRPC22.y + 0.04), fontsize=labelSize)
     ax.annotate('RPC3 doublet', (minz + 0.007*(maxz-minz), layerRPC32.y + 0.04), fontsize=labelSize)
 
+    #
+    # Draw event
+    #
     for i in range(0, 1200):
         y = i*0.01
         zm = event.path.getZatY(y)
