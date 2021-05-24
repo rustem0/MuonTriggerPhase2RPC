@@ -27,6 +27,7 @@ import collections
 import matplotlib.pyplot as plt
 import statistics as stat
 import numpy as np
+from numpy.lib.function_base import angle
 import torch
 import torch.nn as nn
 
@@ -62,19 +63,19 @@ p.add_option('-d', '--debug',     action = 'store_true', default = False, help='
 p.add_option('-v', '--verbose',   action = 'store_true', default = False, help='print debug info')
 p.add_option('--draw',            action = 'store_true', default = False, help='draw event display')
 p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
+p.add_option('-w', '--wait',      action = 'store_true', default = False, help='wait for click on figures to continue')
+
 p.add_option('--show-net',        action = 'store_true', default = False, help='show network')
 p.add_option('--logy',            action = 'store_true', default = False, help='draw histograms with log Y')
 p.add_option('--veto-noise-cand', action = 'store_true', default = False, help='veto candidates containing noise hits')
 p.add_option('--do-pdf',          action = 'store_true', default = False, help='save figures as PDF')
 p.add_option('--has-rpc2-noise',  action = 'store_true', default = False, help='require noise hits in RPC2 later for event display')
+p.add_option('--no-out',          action = 'store_true', default = False, help='do not create default output directory and do not write output')
 
-
-p.add_option('--outpath', '-o',   type='string',  default = None, help = 'output path for CSV file')
-p.add_option('--out-pickle',      type='string',  default = None, help = 'output path for pickle output file')
+p.add_option('--outdir', '-o',    type='string',  default = None, help = 'output directory')
 p.add_option('--in-pickle',       type='string',  default = None, help = 'input path for pickle output file')
 p.add_option('--torch-model',     type='string',  default = None, help = 'input path for torch model')
 p.add_option('--plot-dir',        type='string',  default = None, help = 'output directory for plots')
-
 
 (options, args) = p.parse_args()
 
@@ -89,7 +90,7 @@ def getLog(name, level='INFO', debug=False, print_time=False, verbose=False):
         f = logging.Formatter('%(message)s')
 
     if verbose:
-        h = logging.StreamHandler(filename=name, level=logging.DEBUG)
+        h = logging.StreamHandler(filename=name)
         h.setFormatter(f)
     else:
         h = logging.StreamHandler(sys.stdout)
@@ -128,13 +129,33 @@ def verbose(*args):
         logVerbose.debug(out)
 
 #----------------------------------------------------------------------------------------------
+def getOutPath(filename=None):
+
+    if options.no_out:
+        return None
+
+    if options.outdir:
+        outdir = options.outdir
+    else:
+        outdir = 'rpc-sim_{:06d}-events_{:04d}-noise_{:06d}-seed'.format(options.nevent, int(10000*options.noise_prob), options.seed)
+
+    if not os.path.isdir(outdir):
+        log.info('getOutPath - create directory: "{}"'.format(outdir))
+        os.makedirs(outdir)
+
+    if filename:
+        return '{}/{}'.format(outdir, filename)
+        
+    return outdir
+
+#----------------------------------------------------------------------------------------------
 def getPlotPath(plotName=None, doPDF=options.do_pdf):
 
     if options.plot_dir:
         return options.plot_dir
 
     if options.in_pickle and options.torch_model:
-        pdir = '{}/plots-{}/'.format(os.path.dirname(options.torch_model), os.path.basename(options.in_pickle).replace('.pickle', ''))
+        pdir = '{}/plots-{}/'.format(options.in_pickle.replace('.pickle', '').replace('/', '_'), os.path.dirname(options.torch_model).replace('/', ''))
 
         if not os.path.isdir(pdir):
             log.info('getPlotPath - make new directory for plots: {}'.format(pdir))
@@ -496,6 +517,9 @@ class CandEvent:
     def getPredQPt(self):
         return self.predPt*self.predSign
 
+    def getMuonAngleDegrees(self):
+        return 180*self.muonAngle/math.pi
+
     def getSeedLineZ(self, y):
         return y/math.tan(self.seedAngle)
 
@@ -784,13 +808,20 @@ def reconstructClusters(event):
 #----------------------------------------------------------------------------------------------
 def waitForClick(figname=None):
 
+    plotPath = getPlotPath(figname)
+
+    if not options.wait:
+        if figname and plotPath:
+            log.info('waitForClick - save figure: {}'.format(plotPath))
+            plt.savefig(plotPath)    
+            plt.close()
+        return
+
     log.info('Click on figure to continue, close to exit programme...')
 
     while True:
         try:
             result = plt.waitforbuttonpress()
-
-            plotPath = getPlotPath(figname)
 
             if result == True and figname and plotPath:
                 log.info('waitForClick - save figure: {}'.format(plotPath))
@@ -1186,6 +1217,82 @@ def plotModelResults(events):
     waitForClick()
 
 #----------------------------------------------------------------------------------------------
+def plotLineDifferences(events):
+
+    log.info('plotLineDifferences - plot differences with respect to straight seed line for {:d} simulated events'.format(len(events)))
+
+    muonPtDict  = collections.defaultdict(list)
+    deltaz1Dict = collections.defaultdict(list)
+    deltaz3Dict = collections.defaultdict(list)
+
+    for event in events:
+        for cand in event.candEvents:
+
+            if cand.getMuonAngleDegrees() > 70:
+                angleGroup = 1
+            elif cand.getMuonAngleDegrees() > 50:
+                angleGroup = 2
+            else:
+                angleGroup = 3
+
+            if cand.hasNoiseCluster():
+                angleGroup *= 100
+
+            deltaz1Dict[angleGroup] += [cand.rpc1DeltaZ]
+            deltaz3Dict[angleGroup] += [cand.rpc3DeltaZ]
+            muonPtDict[angleGroup]  += [cand.muonPt*cand.muonSign]
+
+            #log.info('Angle group={}, muon={}'.format(angleGroup, event.printSimEvent()))
+
+    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
+    plt.subplots_adjust(hspace=0.28, bottom=0.08, left=0.10, top=0.97, right=0.97)
+
+    labelDict = {1:r'$85^{\circ} < \angle_{\mathrm{sim.}~\mu} < 70^{\circ}$',
+                 2:r'$70^{\circ} < \angle_{\mathrm{sim.}~\mu} < 50^{\circ}$',
+                 3:r'$50^{\circ} < \angle_{\mathrm{sim.}~\mu} < 40^{\circ}$',
+                 100:r'$85^{\circ} < \angle_{\mathrm{sim.}~\mu} < 70^{\circ}$',
+                 200:r'$70^{\circ} < \angle_{\mathrm{sim.}~\mu} < 50^{\circ}$',
+                 300:r'$50 ^{\circ}< \angle_{\mathrm{sim.}~\mu} < 40^{\circ}$',
+                }
+
+    for i in [1, 2, 3]:
+        log.info('Angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
+
+        ax[0, 0].scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10, label=labelDict[i])
+        ax[0, 1].scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10, label=labelDict[i])
+
+    ax[0, 0].set_xlabel(r'Pure muon $q\times p_{\mathrm{T}}$', fontsize=14)
+    ax[0, 0].set_ylabel('RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
+    ax[0, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    ax[0, 1].set_xlabel(r'Pure muon $q\times p_{\mathrm{T}}$', fontsize=14)
+    ax[0, 1].set_ylabel('RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
+    ax[0, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    for i in [100, 200, 300]:
+        log.info('Angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
+
+        ax[1, 0].scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10)
+        ax[1, 1].scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10)
+
+    ax[1, 0].set_xlabel(r'Muon with noise $q\times p_{\mathrm{T}}$', fontsize=14)
+    ax[1, 0].set_ylabel('RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
+    ax[1, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    ax[1, 1].set_xlabel(r'Muon with noise $q\times p_{\mathrm{T}}$', fontsize=14)
+    ax[1, 1].set_ylabel('RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
+    ax[1, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    fig.show()
+
+    plotPath = getPlotPath('differences.png')
+
+    if plotPath:
+        plt.savefig(plotPath)
+
+    waitForClick()
+
+#----------------------------------------------------------------------------------------------
 def plotCandEvents(events):
 
     log.info('plotCandEvents - plot candidates for {:d} simulated events'.format(len(events)))
@@ -1236,7 +1343,7 @@ def plotCandEvents(events):
     ax[0, 0].hist(ncand, log=options.logy, bins=cbins, label=r'All $\mu$')
     ax[0, 1].hist(seedz, log=options.logy, bins=sbins, label=r'All $\mu$')
 
-    ax[1, 0].hist(deltaz1Neg,   log=options.logy, bins=zbins1, color='blue', label=r'Pure $+\mu$', )
+    ax[1, 0].hist(deltaz1Neg,   log=options.logy, bins=zbins1, color='blue', label=r'Pure $+\mu$')
     ax[1, 0].hist(deltaz1Pos,   log=options.logy, bins=zbins1, color='red',  label=r'Pure $-\mu$')
     ax[1, 0].hist(deltaz1Noise, log=options.logy, bins=zbins1, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2)
 
@@ -1583,35 +1690,38 @@ def writeCandEvents(events):
         log.info('writeCandEvents - input pickle file specified {} - do not write events again'.format(options.in_pickle))
         return
 
-    if options.outpath == None:
-        log.info('writeCandEvents - missing output file path')
-        return
+    outcsv = getOutPath('events.csv')
 
-    if os.path.isfile(options.outpath):
-        log.info('writeCandEvents - output file will be replaced: {}'.format(options.outpath))
+    if outcsv:
+        if os.path.isfile(outcsv):
+            log.info('writeCandEvents - output file will be replaced: {}'.format(outcsv))
 
-    outdir = os.path.dirname(options.outpath)
+        log.info('writeCandEvents - save {} events to {}'.format(len(events), outcsv))
 
-    if outdir and len(outdir) > 1 and not os.path.isdir(outdir):
-        log.info('writeCandEvents - create output directory: {}'.format(outdir))
-        os.makedirs(outdir)
+        with open(outcsv, 'w', newline='') as outfile:
+            writer = csv.writer(outfile, delimiter=',')
 
-    log.info('writeCandEvents - save {} events to {}'.format(len(events), options.outpath))
+            for event in events:
+                for cand in event.candEvents:
+                    writer.writerow(cand.getCandVars())
 
-    outfile = open(options.outpath, 'w', newline='')
-    writer = csv.writer(outfile, delimiter=',')
+    outpickle = getOutPath('events.pickle')
 
-    for event in events:
-        for cand in event.candEvents:
-            writer.writerow(cand.getCandVars())
+    if outpickle:
+        log.info('writeCandEvents - pickle {} events to {}'.format(len(events), outpickle))
 
-    outfile.close()
-
-    if options.out_pickle:
-        log.info('writeCandEvents - pickle {} events to {}'.format(len(events), options.out_pickle))
-
-        with open(options.out_pickle, 'wb') as f:
+        with open(outpickle, 'wb') as f:
             pickle.dump(events, f, pickle.HIGHEST_PROTOCOL)
+
+    outopts = getOutPath('options.txt')
+
+    if outopts:
+        log.info('writeCandEvents - write macro options to {}'.format(outopts))
+
+        with open(outopts, 'w') as f:
+            f.write('Options: {}\n\n'.format(str(options)))
+            f.write('Arguments: {}\n'.format(args))
+
 
 #----------------------------------------------------------------------------------------------
 def main():
@@ -1631,6 +1741,8 @@ def main():
         plotModelResults(events)
 
         plotCandEvents(events)
+
+        plotLineDifferences(events)
 
         plotSimulatedHits(events)
 
