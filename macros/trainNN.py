@@ -82,13 +82,17 @@ class Net(nn.Module):
         return x
 
 #----------------------------------------------------------------------------------------------    
-def getOutFile(suffix=None):
+def getFilePath(suffix=None):
 
     if len(args) != 1:
         print('main - missing input data path: {}'.format(args))
-        sys.exit(0)
+        return
 
     fpath = args[0]
+
+    if fpath.count('.csv') != 1:
+        print('main - input file must end with .csv: {}'.format(fpath))
+        sys.exit(0)
 
     if suffix == None:
         if not os.path.isfile(fpath):
@@ -97,16 +101,13 @@ def getOutFile(suffix=None):
 
         return fpath
 
-    if fpath.count('.csv') != 1:
-        print('main - input file must end with .csv: {}'.format(fpath))
-        sys.exit(0)
+    fbase = os.path.dirname(fpath)
 
-    fbase = fpath.replace('.csv', '')
-
-    if not os.path.isdir(fbase):
+    if fbase and len(fbase) > 1 and not os.path.isdir(fbase):
+        print('getFilePath - make out directory="{}" - this should never happen actually'.format(fbase))
         os.makedirs(fbase)
 
-    return '{}/{}'.format(fbase, fpath.replace('.csv', suffix))
+    return fpath.replace('.csv', suffix)
 
 #----------------------------------------------------------------------------------------------    
 def waitForClick(figs = []):
@@ -161,14 +162,14 @@ def learnReg(net, nepoch, learningRate, trainDm, trainTm, currStep):
     plt.xlabel('TrainData(1/Gev)')
     plt.ylabel('Prediction(1/Gev)')
     f1.show(False)
-    plt.savefig(getOutFile('_epoch{:d}_TargetVsResult.png'.format(currStep)))
+    plt.savefig(getFilePath('_epoch{:d}_TargetVsResult.png'.format(currStep)))
 
     f2 = plt.figure()
     plt.scatter(x = np.arange(0, options.nepoch), y = TotalLoss, s = 0.1)
     plt.xlabel('Epoch')
     plt.ylabel('Total loss')
     f2.show(False)
-    plt.savefig(getOutFile('_epoch{:d}_LossVsEpoch.png'.format(currStep)))
+    plt.savefig(getFilePath('_epoch{:d}_LossVsEpoch.png'.format(currStep)))
 
     waitForClick([f1, f2])
 
@@ -181,11 +182,7 @@ def main():
     net = Net()
     net.train()
 
-    if len(args) != 1:
-        print('main - missing input data path: {}'.format(args))
-        return
-
-    fpath = args[0]
+    fpath = getFilePath()
 
     if not os.path.isfile(fpath):
         print('main - missing input data path: {}'.format(fpath))
@@ -204,7 +201,7 @@ def main():
     print('Finished training, will save state dictionary:')
     print(pprint.pformat(net.state_dict()))
 
-    torch.save(net.state_dict(), getOutFile('.net'))
+    torch.save(net.state_dict(), getFilePath('.pt'))
 
 #------------------------------------------------------------------------------#
 if __name__ == "__main__":

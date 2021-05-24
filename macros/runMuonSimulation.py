@@ -22,7 +22,6 @@ import csv
 import itertools
 import pickle
 import logging
-import seaborn as sns
 import collections
 
 import matplotlib.pyplot as plt
@@ -31,7 +30,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from torchviz import make_dot
 from collections import defaultdict
 from enum import Enum
 from optparse import OptionParser
@@ -1410,8 +1408,6 @@ def drawEvent(event, candEvent=None):
         if hit.origin == Origin.NOISE and minz < hit.strip.zcenter and hit.strip.zcenter < maxz:
             hitNoiseCounts[Layer.getDoublet(hit.strip.layer)] += 1
 
-    print(hitNoiseCounts)
-
     if options.has_rpc2_noise:
         if hitNoiseCounts[Layer.RPC2] == 0:
             return
@@ -1571,8 +1567,7 @@ def prepEvents():
                 log.debug('Muon pT = {}, predicted pT = {}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
 
                 if options.show_net:
-                    make_dot(pred.mean(), params=dict(net.named_parameters()))
-
+                    log.info('TODO - implement code to visualize neural network')
 
             if options.draw:
                 drawEvent(event, cand)
@@ -1594,6 +1589,12 @@ def writeCandEvents(events):
 
     if os.path.isfile(options.outpath):
         log.info('writeCandEvents - output file will be replaced: {}'.format(options.outpath))
+
+    outdir = os.path.dirname(options.outpath)
+
+    if outdir and len(outdir) > 1 and not os.path.isdir(outdir):
+        log.info('writeCandEvents - create output directory: {}'.format(outdir))
+        os.makedirs(outdir)
 
     log.info('writeCandEvents - save {} events to {}'.format(len(events), options.outpath))
 

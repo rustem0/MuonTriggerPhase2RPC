@@ -12,8 +12,21 @@ Documentation
 -------------
 
 Produce events for NN training without noise:
-
 ```bash
-python3 macros/runMuonSimulation.py --logy -n 100000 --noise-prob=0.0 -o train_100k_noise-off/train_100k_noise-off.csv &> log100k &
-
+python3 macros/runMuonSimulation.py --logy -n 100000 --noise-prob=0.0 -o train_100k_noise-off/train_100k_noise-off.csv
 ```
+
+Run NN training using these events:
+```bash
+python3 macros/trainNN.py train_100k_noise-off/train_100k_noise-off.csv
+```
+
+Produce events for NN evaluation with noise:
+```bash
+python3 macros/runMuonSimulation.py --logy -n 200000 --noise-prob=0.001 -o train_200k_noise-on/train_200k_noise-on.csv --out-pickle=train_200k_noise-on/train_200k_noise-on.pickle 
+```
+
+Dependencies
+------------
+ 
+These macros require Python 3.7+ and PyTorch
