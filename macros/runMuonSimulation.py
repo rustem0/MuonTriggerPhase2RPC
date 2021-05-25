@@ -155,7 +155,7 @@ def getPlotPath(plotName=None, doPDF=options.do_pdf):
         return options.plot_dir
 
     if options.in_pickle and options.torch_model:
-        pdir = '{}/plots-{}/'.format(options.in_pickle.replace('.pickle', '').replace('/', '_'), os.path.dirname(options.torch_model).replace('/', ''))
+        pdir = '{}/plot-model-{}/'.format(os.path.dirname(options.in_pickle), os.path.dirname(options.torch_model).replace('/', ''))
 
         if not os.path.isdir(pdir):
             log.info('getPlotPath - make new directory for plots: {}'.format(pdir))
