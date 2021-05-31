@@ -27,10 +27,10 @@ import collections
 import matplotlib.pyplot as plt
 import statistics as stat
 import numpy as np
-from numpy.lib.function_base import angle
 import torch
 import torch.nn as nn
 
+from scipy.optimize import root
 from collections import defaultdict
 from enum import Enum
 from optparse import OptionParser
@@ -65,7 +65,6 @@ p.add_option('--draw',            action = 'store_true', default = False, help='
 p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
 p.add_option('-w', '--wait',      action = 'store_true', default = False, help='wait for click on figures to continue')
 
-p.add_option('--show-net',        action = 'store_true', default = False, help='show network')
 p.add_option('--logy',            action = 'store_true', default = False, help='draw histograms with log Y')
 p.add_option('--veto-noise-cand', action = 'store_true', default = False, help='veto candidates containing noise hits')
 p.add_option('--do-pdf',          action = 'store_true', default = False, help='save figures as PDF')
@@ -492,6 +491,51 @@ class Trajectory:
         return s
 
 #----------------------------------------------------------------------------------------------
+class PredPath:
+    '''PredPath - solve predicted muon trajectory y = f(z) under these constraints:
+            - Muon passes through seed point zs, ys
+            - Muon passes through point at zr, yr = rpc_radius - where zr to be determined
+            - Muon trajectory tangent at zr, yr = artan(yr/zr) - straight line passing (0, 0) and (zr, yr)
+    '''
+
+    def __init__(self, seedz, seedy, predMuonQPt) -> None:
+        self.seedz          = seedz
+        self.seedy          = seedy
+        self.predMuonQPt    = predMuonQPt
+        self.predMuonRadius = abs(self.predMuonQPt)*6.6
+
+    def __str__(self) -> str:
+        return self.printPredPath()
+
+    def solveTrajectory(self, initx):
+        result = root(self.getFunc, initx)
+        return result
+
+    def getFunc(self, x):
+        zr = float(x[0])
+        z0 = float(x[1])
+        y0 = float(x[2])
+
+        zs = self.seedz
+        ys = self.seedy
+        yr = options.rpc_radius
+
+        f0 = (zs - z0)**2 + (ys - y0)**2 - self.predMuonRadius**2
+        f1 = (zr - z0)**2 + (yr - y0)**2 - self.predMuonRadius**2
+        f2 = (yr**2)*(self.predMuonRadius**2 - (zr - z0)**2) -4*(zr**2)*((zr - z0)**2)
+
+        return (f0, f1, f2)
+
+    def printPredPath(self):
+        s = 'PredPath - seedz = {}, seedy = {}, predMuonQPt = {}, predMuonRadius = {}'.format(
+            self.seedz,
+            self.seedy,
+            self.predMuonQPt,
+            self.predMuonRadius)
+
+        return s
+
+#----------------------------------------------------------------------------------------------
 class CandEvent:
 
     def __init__(self, simEvent, seedCluster):
@@ -554,7 +598,7 @@ class CandEvent:
 
     def getCandVars(self):
         '''Return variables for NN training and testing, also truth information.
-           Variables are normalised to std variation of about 1 and centred at 0.
+           Variables are normalised to produced distributions with std variation of ~1 and centred at ~0.
         '''
 
         return [(self.getSeedZ()-4.0)/2.0,
@@ -1662,9 +1706,14 @@ def prepEvents():
     else:
         net = None
 
+    if options.nevent and len(events) > options.nevent:
+        events = events[:options.nevent]
+
     for event in events:
         if net:
             for cand in event.candEvents:
+                ''' Compute predicted candidate muon pT and charge using previously trained NN 
+                '''
                 data = np.array([cand.getCandVars()[0:3]], np.float32)
                 dataTr = torch.from_numpy(data)
                 pred = net(dataTr).detach().numpy()
@@ -1673,11 +1722,18 @@ def prepEvents():
 
                 log.debug('Muon pT = {}, predicted pT = {}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
 
-                if options.show_net:
-                    log.info('TODO - implement code to visualize neural network')
+                ''' Solved for predicted muon trajectory passing through seed cl
+                '''
+                predPath = PredPath(cand.seedCluster.getMeanZ(), cand.seedCluster.getY(), cand.getPredQPt())
+                log.info(predPath)
 
-            if options.draw:
-                drawEvent(event, cand)
+                intValues = (cand.seedCluster.getMeanZ(), )
+
+                result = predPath.solveTrajectory()
+                log.info(result)
+
+        if options.draw:
+            drawEvent(event, cand)
 
     log.info('prepEvents - processed {} events in {:.1f}s'.format(len(events), time.time() - startTime))
 

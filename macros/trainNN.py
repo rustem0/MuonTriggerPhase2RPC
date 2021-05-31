@@ -30,6 +30,7 @@ p.add_option('--mse',             action = 'store_true', default = False, help='
 p.add_option('--l1e',             action = 'store_true', default = False, help='use linear error loss function')
 p.add_option('--sme',             action = 'store_true', default = False, help='use smooth linear error loss function')
 
+p.add_option('--show-net',        action = 'store_true', default = False, help='show network')
 p.add_option('-d', '--debug',     action = 'store_true', default = False, help='print debug info')
 p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
 
@@ -213,6 +214,9 @@ def learnReg(net, nepoch, learningRate, trainDm, trainTm, currStep):
     plt.ylabel('Total loss')
     f2.show(False)
     plt.savefig(getFilePath('_epoch{:d}_LossVsEpoch.png'.format(currStep)))
+
+    if options.show_net:
+        log.info('TODO - implement code to visualize neural network')
 
     waitForClick([f1, f2])
 
