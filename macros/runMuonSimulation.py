@@ -37,7 +37,7 @@ from optparse import OptionParser
 
 p = OptionParser()
 
-p.add_option('--nevent', '-n',       type='int',   default = 30,    help = 'number of events to simulate')
+p.add_option('--nevent', '-n',       type='int',   default =  0,    help = 'number of events to simulate')
 p.add_option('--min-angle',          type='int',   default = 85,    help = 'minimum muon angle in degrees')
 p.add_option('--max-angle',          type='int',   default = 40,    help = 'maximum muon angle in degrees')
 p.add_option('--seed',               type='int',   default = 42,    help = 'random seed')
@@ -610,6 +610,9 @@ class CandEvent:
     def getNHit(self, origin=None):
         return self.seedCluster.getNHit(origin) + self.rpc1Cluster.getNHit(origin) + self.rpc3Cluster.getNHit(origin)
 
+    def getNLayer(self, origin=None):
+        return self.seedCluster.getNLayer(origin) + self.rpc1Cluster.getNLayer(origin) + self.rpc3Cluster.getNLayer(origin)
+
     def getSeedZ(self):
         return self.seedCluster.getMeanZ()
 
@@ -634,7 +637,6 @@ class CandEvent:
         '''Return variables for NN training and testing, also truth information.
            Variables are normalised to produced distributions with std variation of ~1 and centred at ~0.
         '''
-
         return [(self.getSeedZ()-4.0)/2.0,
                 self.rpc1DeltaZ/0.04,
                 self.rpc3DeltaZ/0.16,
@@ -662,7 +664,7 @@ class CandEvent:
         zp = []
         yp = []
 
-        if self.predPath and self.predTrajectory:
+        if self.predTrajectory:
             for i in range(0, 1200):
                 y = i*0.01
                 z = self.predTrajectory.getZatY(y)
@@ -798,6 +800,15 @@ class Cluster:
 
     def getNHit(self, origin=None):
         return sum(map(lambda x: x.origin == origin or origin == None, self.hits))
+
+    def getNLayer(self, origin=None):
+        layers = set()
+
+        for hit in self.hits:
+            if hit.origin == origin or origin == None:
+                layers.add(hit.strip.layer)
+
+        return len(layers)
 
 #----------------------------------------------------------------------------------------------
 def collectClusterHits(cluster, hits):
@@ -1486,6 +1497,56 @@ def plotCandEvents(events):
     waitForClick()
 
 #----------------------------------------------------------------------------------------------
+def plotCandQuality(events):
+
+    log.info('plotCandQuality - plot candidates for {:d} simulated events'.format(len(events)))
+
+    rmHits = []
+    nmHits = []
+
+    rmLayers = []
+    nmLayers = []
+
+    for event in events:
+        for cand in event.candEvents:
+
+            if cand.hasNoiseCluster():
+                nmHits += [cand.getNHit()]
+                nmLayers += [cand.getNLayer()]
+            else:
+                rmHits += [cand.getNHit()]
+                rmLayers += [cand.getNLayer()]
+
+    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
+    plt.subplots_adjust(hspace=0.28, bottom=0.08, left=0.08, top=0.97, right=0.97)
+
+    hbins = [b+0.5 for b in range(1,  10)]
+    lbins = [b+0.5 for b in range(1,   7)]
+
+    ax[0, 0].hist(rmHits, log=options.logy, bins=hbins, label=r'Pure $\mu$')
+    ax[0, 0].hist(nmHits, log=options.logy, bins=hbins, label=r'Noise $\mu$')
+
+    ax[0, 1].hist(rmLayers, log=options.logy, bins=lbins, label=r'Pure $\mu$')
+    ax[0, 1].hist(nmLayers, log=options.logy, bins=lbins, label=r'Noise $\mu$')
+
+    ax[0, 0].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[0, 0].set_xlabel('Number of reconstructed hits', fontsize=14)
+    ax[0, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    ax[0, 1].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[0, 1].set_xlabel('Number of layers', fontsize=14)
+    ax[0, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    fig.show()
+
+    plotPath = getPlotPath('candidate_quality.png')
+
+    if plotPath:
+        plt.savefig(plotPath)
+
+    waitForClick()
+
+#----------------------------------------------------------------------------------------------
 def makeCandidates(event):
     '''makeCandidates - make muon candidates
     '''
@@ -1778,38 +1839,40 @@ def prepEvents():
 
                 cand.setModelPred(pred[0][0])
 
-                log.info('-------------------------------------------------------------------')
-                log.info('Muon true q*pT = {:.1f}, predicted q*pT = {:.1f}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
-
-
-                ''' Solved for predicted muon trajectory passing through seed cl
+                '''Use predicted pT and charge, and the angle of the line passing through RPC1 cluster
                 '''
-                predPath = PredPath(cand.seedCluster.getMeanZ(), cand.seedCluster.getY(), cand.getPredQPt())
-                log.info(predPath)
-
-                initAngle = math.atan(cand.seedCluster.getY()/cand.seedCluster.getMeanZ())
-
-                initTrajectory = Trajectory(cand.getPredPt(), initAngle, cand.getPredSign())
-
-                initValues = (cand.seedCluster.getMeanZ(), initTrajectory.z0, initTrajectory.y0)
-
-                result = predPath.solveTrajectory(initValues)
-
                 angleRPC1 = 180*math.atan(cand.rpc1Cluster.getY()/cand.rpc1Cluster.getMeanZ())/math.pi
 
+                cand.predTrajectory = Trajectory(cand.getPredPt(), angleRPC1, cand.getPredSign())
 
-                log.info('Muon true zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(event.path.getZatY(options.rpc_radius), event.path.z0, event.path.y0))
-                log.info('Initial   zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(initValues[0], initValues[1], initValues[2]))
-                log.info('Solution  zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(result.x[0],   result.x[1],   result.x[2]))
-                log.info('Muon angle true = {:.4f}, predicted = {:.4f}'.format(event.muonAngle, predPath.getPredAngle()))
+                if options.debug:
+                    log.info('-------------------------------------------------------------------')
+                    log.info('Muon true q*pT = {:.1f}, predicted q*pT = {:.1f}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
 
-                log.info(dir(result))
-                log.info(result)
 
-                if predPath.getStatus() == 1:
+                    ''' Solved for predicted muon trajectory passing through seed cl
+                    '''
+                    predPath = PredPath(cand.seedCluster.getMeanZ(), cand.seedCluster.getY(), cand.getPredQPt())
+                    log.info(predPath)
+
+                    initAngle = math.atan(cand.seedCluster.getY()/cand.seedCluster.getMeanZ())
+
+                    initTrajectory = Trajectory(cand.getPredPt(), initAngle, cand.getPredSign())
+
+                    initValues = (cand.seedCluster.getMeanZ(), initTrajectory.z0, initTrajectory.y0)
+
+                    result = predPath.solveTrajectory(initValues)
 
                     cand.predPath = predPath
-                    cand.predTrajectory = Trajectory(cand.getPredPt(), angleRPC1, cand.getPredSign())
+
+                    log.info('Muon true zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(event.path.getZatY(options.rpc_radius), event.path.z0, event.path.y0))
+                    log.info('Initial   zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(initValues[0], initValues[1], initValues[2]))
+                    log.info('Solution  zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(result.x[0],   result.x[1],   result.x[2]))
+                    log.info('Muon angle true = {:.4f}, predicted = {:.4f}'.format(event.muonAngle, predPath.getPredAngle()))
+
+                    log.info(dir(result))
+                    log.info(result)
+
 
         if options.draw:
             drawEvent(event, cand)
@@ -1857,7 +1920,6 @@ def writeCandEvents(events):
             f.write('Options: {}\n\n'.format(str(options)))
             f.write('Arguments: {}\n'.format(args))
 
-
 #----------------------------------------------------------------------------------------------
 def main():
 
@@ -1873,6 +1935,9 @@ def main():
     writeCandEvents(events)
 
     if options.plot:
+        plotCandQuality(events)
+        return
+
         plotModelResults(events)
 
         plotCandEvents(events)
