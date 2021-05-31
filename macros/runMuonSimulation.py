@@ -62,6 +62,7 @@ p.add_option('--fc3',                   type='int',   default=20)
 p.add_option('-d', '--debug',     action = 'store_true', default = False, help='print debug info')
 p.add_option('-v', '--verbose',   action = 'store_true', default = False, help='print debug info')
 p.add_option('--draw',            action = 'store_true', default = False, help='draw event display')
+p.add_option('--draw-line',       action = 'store_true', default = False, help='draw muon direction line')
 p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
 p.add_option('-w', '--wait',      action = 'store_true', default = False, help='wait for click on figures to continue')
 
@@ -504,17 +505,42 @@ class PredPath:
         self.predMuonQPt    = predMuonQPt
         self.predMuonRadius = abs(self.predMuonQPt)*6.6
 
+        self.result = None
+
     def __str__(self) -> str:
         return self.printPredPath()
 
+    def hasConverged(self):
+        return self.getStatus() == 1
+
+    def getStatus(self):
+        if self.result == None:
+            return 0
+        return self.result.status
+
+    def getPredAngle(self):
+        if self.result == None:
+            return None
+
+        return math.atan(options.rpc_radius/self.result.x[0])
+
+    def getPredAngleDeg(self):
+        angle = self.getPredAngle()
+
+        if angle == None:
+            return None
+
+        return 180*angle/math.pi
+
     def solveTrajectory(self, initx):
-        result = root(self.getFunc, initx)
-        return result
+        self.result = root(self.getFunc, initx, tol=1e-9)
+
+        return self.result
 
     def getFunc(self, x):
-        zr = float(x[0])
-        z0 = float(x[1])
-        y0 = float(x[2])
+        zr = x[0]
+        z0 = x[1]
+        y0 = x[2]
 
         zs = self.seedz
         ys = self.seedy
@@ -527,7 +553,7 @@ class PredPath:
         return (f0, f1, f2)
 
     def printPredPath(self):
-        s = 'PredPath - seedz = {}, seedy = {}, predMuonQPt = {}, predMuonRadius = {}'.format(
+        s = 'PredPath - seedz = {:.4f}, seedy = {:.4f}, predMuonQPt = {:.1f}, predMuonRadius = {:.1f}'.format(
             self.seedz,
             self.seedy,
             self.predMuonQPt,
@@ -552,14 +578,22 @@ class CandEvent:
         self.muonPt      = simEvent.muonPt
         self.muonAngle   = simEvent.muonAngle
 
-        self.predPt      = None
-        self.predSign    = None
+        self.predPt         = None
+        self.predSign       = None
+        self.predPath       = None
+        self.predTrajectory = None
 
     def getMuonQPt(self):
         return self.muonPt*self.muonSign
 
     def getPredQPt(self):
         return self.predPt*self.predSign
+
+    def getPredSign(self):
+        return self.predSign
+
+    def getPredPt(self):
+        return self.predPt
 
     def getMuonAngleDegrees(self):
         return 180*self.muonAngle/math.pi
@@ -620,6 +654,25 @@ class CandEvent:
             yl += [zl[-1]*math.tan(self.seedAngle)]
 
         return zl, yl
+
+    def makePredLine(self):
+        #
+        # Draw event
+        #
+        zp = []
+        yp = []
+
+        if self.predPath and self.predTrajectory:
+            for i in range(0, 1200):
+                y = i*0.01
+                z = self.predTrajectory.getZatY(y)
+
+                if z != None:
+                    zp += [z]
+                    yp += [y]
+
+        return (zp, yp)
+
 #----------------------------------------------------------------------------------------------
 class SimEvent:
 
@@ -1635,18 +1688,23 @@ def drawEvent(event, candEvent=None):
 
         ax.scatter([hit.getZ()], [hit.getY()+hoff], color=color, marker=marker, label=label, s=size)
 
-    ax.plot(zarr, yarr, label=r'Muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign), color='royalblue', linewidth=2)
+    ax.plot(zarr, yarr, label=r'Sim. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign), color='royalblue', linewidth=2)
 
-    if options.debug:
-        ax.plot(zlin, ylin, label='Line')
+    if options.debug or options.draw_line:
+        ax.plot(zlin, ylin, linewidth=1, linestyle='--', color='orange', label='Sim. muon direction')
 
     ax.set_xlabel('Beam axis z [m]',  fontsize=labelSize)
     ax.set_ylabel('Radial y [m]',  fontsize=labelSize)
 
     if candEvent:
-        zseed, yseed = candEvent.makeSeedLine()
+        if getattr(candEvent, 'predTrajectory', None):
+            zpred, ypred = candEvent.makePredLine()
+            ax.plot(zpred, ypred, linewidth=1, linestyle='-', color='red', label=r'Pred. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(candEvent.predPt*candEvent.predSign))
 
-        ax.plot(zseed, yseed, linewidth=1, linestyle='--', color='green', label='RPC2 seed cluster line')
+            zseed, yseed = candEvent.makeSeedLine()
+            ax.plot(zseed, yseed, linewidth=1, linestyle='--', color='green', label='RPC2 seed cluster line')
+
+
 
     plt.xlim(minz, maxz)
     plt.ylim(miny, maxy)
@@ -1720,17 +1778,38 @@ def prepEvents():
 
                 cand.setModelPred(pred[0][0])
 
-                log.debug('Muon pT = {}, predicted pT = {}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
+                log.info('-------------------------------------------------------------------')
+                log.info('Muon true q*pT = {:.1f}, predicted q*pT = {:.1f}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
+
 
                 ''' Solved for predicted muon trajectory passing through seed cl
                 '''
                 predPath = PredPath(cand.seedCluster.getMeanZ(), cand.seedCluster.getY(), cand.getPredQPt())
                 log.info(predPath)
 
-                intValues = (cand.seedCluster.getMeanZ(), )
+                initAngle = math.atan(cand.seedCluster.getY()/cand.seedCluster.getMeanZ())
 
-                result = predPath.solveTrajectory()
+                initTrajectory = Trajectory(cand.getPredPt(), initAngle, cand.getPredSign())
+
+                initValues = (cand.seedCluster.getMeanZ(), initTrajectory.z0, initTrajectory.y0)
+
+                result = predPath.solveTrajectory(initValues)
+
+                angleRPC1 = 180*math.atan(cand.rpc1Cluster.getY()/cand.rpc1Cluster.getMeanZ())/math.pi
+
+
+                log.info('Muon true zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(event.path.getZatY(options.rpc_radius), event.path.z0, event.path.y0))
+                log.info('Initial   zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(initValues[0], initValues[1], initValues[2]))
+                log.info('Solution  zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(result.x[0],   result.x[1],   result.x[2]))
+                log.info('Muon angle true = {:.4f}, predicted = {:.4f}'.format(event.muonAngle, predPath.getPredAngle()))
+
+                log.info(dir(result))
                 log.info(result)
+
+                if predPath.getStatus() == 1:
+
+                    cand.predPath = predPath
+                    cand.predTrajectory = Trajectory(cand.getPredPt(), angleRPC1, cand.getPredSign())
 
         if options.draw:
             drawEvent(event, cand)
