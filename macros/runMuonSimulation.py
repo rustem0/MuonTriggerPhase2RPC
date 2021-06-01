@@ -583,6 +583,9 @@ class CandEvent:
         self.predPath       = None
         self.predTrajectory = None
 
+        self._hasNoiseCluster = None
+        self._passQualityCuts = None
+
     def getMuonQPt(self):
         return self.muonPt*self.muonSign
 
@@ -626,7 +629,16 @@ class CandEvent:
         return self.rpc3Cluster.getNHit() > 0 and self.rpc3Cluster.getNHit() == self.rpc3Cluster.getNHit(Origin.NOISE)
 
     def hasNoiseCluster(self):
-        return self.isSeedNoise() or self.isRPC1Noise() or self.isRPC3Noise()
+        if self._hasNoiseCluster == None:
+            self._hasNoiseCluster = (self.isSeedNoise() or self.isRPC1Noise() or self.isRPC3Noise())
+
+        return self._hasNoiseCluster
+
+    def passQualityCuts(self):
+        if self._passQualityCuts == None:
+            self._passQualityCuts = (self.getNHit() >= 6 and self.getNLayer() >= 4 )
+
+        return self._passQualityCuts
 
     def setModelPred(self, value):
         self.predPt   = abs(10.0/float(value))
@@ -648,6 +660,8 @@ class CandEvent:
                 int(self.hasNoiseCluster())]
 
     def makeSeedLine(self):
+        '''Draw straight line through the RPC2 seed cluster centre
+        '''
         zl = []
         yl = []
 
@@ -658,9 +672,8 @@ class CandEvent:
         return zl, yl
 
     def makePredLine(self):
-        #
-        # Draw event
-        #
+        '''Draw trajectory corresponding to predicted muon pT, charge and angle
+        '''
         zp = []
         yp = []
 
@@ -1116,8 +1129,7 @@ def getMU20Eff():
 #----------------------------------------------------------------------------------------------
 def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
 
-    ebins = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40, 50, 60, 70, 80, 85]
-    ebins = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 25, 30]
+    ebins = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 25, 30]
     ebins = [b for b in range(3, 31)]
 
     resultBins = None
@@ -1134,7 +1146,8 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
 
         leff = []
         beff = []
-        eff20 = None
+        eff20 = None # efficiency at first pT>20 GeV bin
+        eff25 = None # efficiency at first pT>25 GeV bin
 
         for i in range(len(denCounts)):
             den = denCounts[i]
@@ -1147,14 +1160,16 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
             else:
                 leff += [0.0]
 
-            if eff20 == None and beff[-1] > 20.0:
+            if eff20 == None and beff[-1] > 20.1:
                 eff20 = leff[-1]
+                log.debug('prepEffPlot - eff20 efficiency = {:d}/{:d} = {:.4f} for pT > {:d} MeV, beff[-1] = {}'.format(num, den, leff[-1], mev, beff[-1]))
 
-            if eff20 != None:
-                log.debug('prepEffPlot - efficiency = {:d}/{:d} = {:.4f} for pT > {:d} MeV'.format(num, den, leff[-1], mev))
+            if eff25 == None and beff[-1] > 25.1:
+                eff25 = leff[-1]
+                log.debug('prepEffPlot - eff25 efficiency = {:d}/{:d} = {:.4f} for pT > {:d} MeV, beff[-1] = {}'.format(num, den, leff[-1], mev, beff[-1]))
 
-        if eff20 != None and eff20 > 95.0 and resultEffs == None:
-            log.info('prepEffPlot - efficiency at 20 GeV = {:.4f} for pT > {:d} MeV'.format(eff20, mev))
+        if eff20 != None and eff25 != None and eff20 > 0.95*eff25 and resultEffs == None:
+            log.info('prepEffPlot - record efficiency at 20 GeV = {:.4f} for pT > {:d} MeV'.format(eff20, mev))
             resultBins = beff
             resultEffs = leff
 
@@ -1178,6 +1193,8 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
         verbose('Length ebins={}'.format(len(ebins)))
 
         if plot:
+            log.info('Plot efficiency for mev = {}'.format(mev))
+
             fig, ax = plt.subplots(3, figsize=(6, 10))
 
             plt.subplots_adjust(hspace=0.28, bottom=0.08, left=0.08, top=0.97, right=0.97)
@@ -1189,9 +1206,9 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
 
             waitForClick()
 
-    if resultBins == None and resultEffs:
+    if resultBins == None or resultEffs == None:
         log.info('PrepEff - failed to find 95% efficiency at 20 GeV')
-        return (None, None)
+        return (None, None, None)
 
     if scaleToATLAS:
         plateau = []
@@ -1205,8 +1222,10 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
         resultEffs = [eff*scale for eff in resultEffs]
 
         log.info('prepEff - scaled efficiency by {}'.format(scale))
+    else:
+        scale = None
 
-    return resultBins, resultEffs
+    return resultBins, resultEffs, scale
 
 #----------------------------------------------------------------------------------------------
 def plotModelResults(events):
@@ -1227,6 +1246,7 @@ def plotModelResults(events):
 
     passCandQPt = defaultdict(list)
     passRealQPt = defaultdict(list)
+    passBestQPt = defaultdict(list)
 
     for event in events:
         for cand in event.candEvents:
@@ -1250,6 +1270,9 @@ def plotModelResults(events):
                     if not cand.hasNoiseCluster():
                         passRealQPt[mev] += [cand.getMuonQPt()]
 
+                    if cand.passQualityCuts():
+                        passBestQPt[mev] += [cand.getMuonQPt()]
+
     fig, ax = plt.subplots(2, 2, figsize=(10, 8))
 
     plt.subplots_adjust(hspace=0.30, bottom=0.08, left=0.08, top=0.97, right=0.97)
@@ -1269,8 +1292,9 @@ def plotModelResults(events):
 
     dbins = [b*0.008 for b in range(-100, 100)]
 
-    muonColor = 'royalblue'
+    muonColor  = 'royalblue'
     noiseColor = 'yellowgreen'
+    bestColor  = 'magenta'
     atlasColor = 'tab:orange'
 
     ax[0, 0].scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
@@ -1282,13 +1306,16 @@ def plotModelResults(events):
     ax[1, 0].hist(dpReal,  bins=dbins, log=options.logy, label=r'Pure $\mu$', color=muonColor)
     ax[1, 0].hist(dpNoise, bins=dbins, log=options.logy, label=r'Noise $\mu$', color=noiseColor)
 
-    effRealBins, effReal = prepEffPlot(muonQPt, passRealQPt)
-    effCandBins, effCand = prepEffPlot(muonQPt, passCandQPt)
+    effRealBins, effReal, scaleReal = prepEffPlot(muonQPt, passRealQPt)
+    effCandBins, effCand, scaleCand = prepEffPlot(muonQPt, passCandQPt)
+    effBestBins, effBest, scaleBest = prepEffPlot(muonQPt, passBestQPt, plot=False)
+
     effMU20Bins, effMU20 = getMU20Eff()
 
     if effRealBins and effReal and effCandBins and effCand:
-        ax[1, 1].plot(effRealBins, effReal, label=r'Pure $\mu \times 0.7$', color=muonColor)
-        ax[1, 1].plot(effCandBins, effCand, label=r'Noise $\mu \times 0.7$', color=noiseColor)
+        ax[1, 1].plot(effRealBins, effReal, label=r'Pure $\mu \times {:.3f}$'.format(scaleReal), color=muonColor)
+        ax[1, 1].plot(effCandBins, effCand, label=r'Noise $\mu \times {:.3f}$'.format(scaleCand), color=noiseColor)
+        ax[1, 1].plot(effBestBins, effBest, label=r'Pass $\mu \times {:.3f}$'.format(scaleBest), color=bestColor)
         ax[1, 1].plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
 
     ax[0, 0].set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
@@ -1323,6 +1350,31 @@ def plotModelResults(events):
         plt.savefig(plotPath)
 
     waitForClick()
+
+    if effRealBins and effReal and effCandBins and effCand:
+        fig, ax = plt.subplots(figsize=(10, 8))
+        plt.subplots_adjust(hspace=0.30, bottom=0.08, left=0.08, top=0.97, right=0.97)
+
+        ax.plot(effRealBins, effReal, label=r'Pure $\mu \times {:.2f}$'.format(scaleReal), color=muonColor)
+        ax.plot(effCandBins, effCand, label=r'Noise $\mu \times {:.2f}$'.format(scaleCand), color=noiseColor)
+        ax.plot(effBestBins, effBest, label=r'Pass $\mu \times {:.2f}$'.format(scaleBest), color=bestColor)
+        ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
+
+        ax.set_ylabel('Efficiency [%]',  fontsize=14)
+        ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
+        ax.legend(loc='best', prop={'size': 12}, frameon=False)
+        ax.xaxis.grid(True)
+        ax.yaxis.grid(True)
+
+        plt.xlim(3.0, 15.0)
+        plt.ylim(0.0, 15.0)
+
+        plotPath = getPlotPath('results_effzoom.png')
+
+        if plotPath:
+            plt.savefig(plotPath)
+
+        waitForClick()
 
 #----------------------------------------------------------------------------------------------
 def plotLineDifferences(events):
@@ -1517,29 +1569,29 @@ def plotCandQuality(events):
                 rmHits += [cand.getNHit()]
                 rmLayers += [cand.getNLayer()]
 
-    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
-    plt.subplots_adjust(hspace=0.28, bottom=0.08, left=0.08, top=0.97, right=0.97)
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5))
+    plt.subplots_adjust(hspace=0.28, bottom=0.12, left=0.08, top=0.97, right=0.97)
 
     hbins = [b+0.5 for b in range(1,  10)]
     lbins = [b+0.5 for b in range(1,   7)]
 
-    ax[0, 0].hist(rmHits, log=options.logy, bins=hbins, label=r'Pure $\mu$')
-    ax[0, 0].hist(nmHits, log=options.logy, bins=hbins, label=r'Noise $\mu$')
+    ax[0].hist(rmHits, log=options.logy, bins=hbins, label=r'Pure $\mu$')
+    ax[0].hist(nmHits, log=options.logy, bins=hbins, label=r'Noise $\mu$')
 
-    ax[0, 1].hist(rmLayers, log=options.logy, bins=lbins, label=r'Pure $\mu$')
-    ax[0, 1].hist(nmLayers, log=options.logy, bins=lbins, label=r'Noise $\mu$')
+    ax[1].hist(rmLayers, log=options.logy, bins=lbins, label=r'Pure $\mu$')
+    ax[1].hist(nmLayers, log=options.logy, bins=lbins, label=r'Noise $\mu$')
 
-    ax[0, 0].set_ylabel('Number of muon candidates', fontsize=14)
-    ax[0, 0].set_xlabel('Number of reconstructed hits', fontsize=14)
-    ax[0, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax[0].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[0].set_xlabel('Number of reconstructed hits', fontsize=14)
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
 
-    ax[0, 1].set_ylabel('Number of muon candidates', fontsize=14)
-    ax[0, 1].set_xlabel('Number of layers', fontsize=14)
-    ax[0, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax[1].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[1].set_xlabel('Number of layers', fontsize=14)
+    ax[1].legend(loc='best', prop={'size': 12}, frameon=False)
 
     fig.show()
 
-    plotPath = getPlotPath('candidate_quality.png')
+    plotPath = getPlotPath('candidates_quality.png')
 
     if plotPath:
         plt.savefig(plotPath)
@@ -1765,8 +1817,6 @@ def drawEvent(event, candEvent=None):
             zseed, yseed = candEvent.makeSeedLine()
             ax.plot(zseed, yseed, linewidth=1, linestyle='--', color='green', label='RPC2 seed cluster line')
 
-
-
     plt.xlim(minz, maxz)
     plt.ylim(miny, maxy)
 
@@ -1790,7 +1840,7 @@ def prepEvents():
         with open(options.in_pickle, 'rb') as f:
             events = pickle.load(f)
 
-        log.info('prepEvents - read {} pickled events in {:.1}s'.format(len(events), time.time() - startTime))
+        log.info('prepEvents - read {} pickled events in {:4.1}s'.format(len(events), time.time() - startTime))
     else:
         #
         # Simulate events
@@ -1936,7 +1986,6 @@ def main():
 
     if options.plot:
         plotCandQuality(events)
-        return
 
         plotModelResults(events)
 
