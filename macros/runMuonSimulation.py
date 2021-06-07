@@ -1438,8 +1438,8 @@ def plotEfficiency(events):
 
     ax.plot(effRealBins, effReal, label=r'Pure $\mu$',  color=muonColor)
     ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
-    ax.plot(effBestBins, effBest, label=r'Good $\mu$',  color=bestColor)
-    ax.plot(effGoodBins, effGood, label=r'Good $\mu$',  color=goodColor)
+    ax.plot(effBestBins, effBest, label=r'Qual. 1 $\mu$',  color=bestColor)
+    ax.plot(effGoodBins, effGood, label=r'Qual. 2 $\mu$',  color=goodColor)
     ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor)
 
     ax.set_ylabel('Efficiency [%]',  fontsize=14)
@@ -1465,8 +1465,8 @@ def plotEfficiency(events):
 
     ax.plot(effRealBins, effRealScaled, label=r'Pure $\mu \times {:.3f}$' .format(scaleReal), color=muonColor)
     ax.plot(effCandBins, effCandScaled, label=r'Incl. $\mu \times {:.3f}$'.format(scaleCand), color=noiseColor)
-    ax.plot(effBestBins, effBestScaled, label=r'Good $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
-    ax.plot(effGoodBins, effGoodScaled, label=r'Good $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
+    ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
+    ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
     ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
 
     ax.set_ylabel('Efficiency [%]',  fontsize=14)
@@ -1489,8 +1489,8 @@ def plotEfficiency(events):
 
     ax.plot(effRealBins, effReal, label=r'Pure $\mu$', color=muonColor)
     ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
-    ax.plot(effBestBins, effBest, label=r'Good $\mu$', color=bestColor)
-    ax.plot(effGoodBins, effGood, label=r'Good $\mu$', color=goodColor)    
+    ax.plot(effBestBins, effBest, label=r'Qual. 1 $\mu$', color=bestColor)
+    ax.plot(effGoodBins, effGood, label=r'Qual. 2 $\mu$', color=goodColor)
     ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
 
     ax.set_ylabel('Efficiency [%]',  fontsize=14)
