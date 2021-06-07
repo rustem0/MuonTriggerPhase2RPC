@@ -386,6 +386,14 @@ layerRPC11 = SingleLayer(layer=Layer.RPC11, z1=0, z2=9.60, y=6.80)
 
 allLayers = [layerRPC11, layerRPC12, layerRPC21, layerRPC22, layerRPC31, layerRPC32]
 
+dictLayers = {Layer.RPC32:layerRPC32,
+              Layer.RPC31:layerRPC31,
+              Layer.RPC22:layerRPC22,
+              Layer.RPC21:layerRPC21,
+              Layer.RPC12:layerRPC12,
+              Layer.RPC11:layerRPC11
+            }
+
 #----------------------------------------------------------------------------------------------
 class Trajectory:
     '''Trajectory - solve muon trajectory y = f(z) under these constraints:
@@ -468,6 +476,19 @@ class Trajectory:
 
         raise Exception('getZatY - z out of range: y={}, z1={}, z2={}'.format(y, z1, z2))
 
+    def getZatLayer(self, layer):
+
+        if layer in dictLayers:
+            return self.getZatY(dictLayers[layer].y)
+        
+        if layer == Layer.RPC1:
+            return self.getZatY(0.5*(layerRPC11.y + layerRPC12.y))
+        if layer == Layer.RPC2:
+            return self.getZatY(0.5*(layerRPC21.y + layerRPC22.y))
+        if layer == Layer.RPC3:
+            return self.getZatY(0.5*(layerRPC31.y + layerRPC32.y))
+
+        return None
 
     def getLinearYatZ(self, z):
         return z*math.tan(self.muonAngle)
@@ -927,32 +948,36 @@ def reconstructClusters(event):
     event.superClusters  = superDict
 
 #----------------------------------------------------------------------------------------------
-def waitForClick(figname=None):
-
-    plotPath = getPlotPath(figname)
-
-    if not options.wait:
-        if figname and plotPath:
-            log.info('waitForClick - save figure: {}'.format(plotPath))
-            plt.savefig(plotPath)    
-            plt.close()
-        return
+def waitForClick(figname=None, saveAll=True):
 
     log.info('Click on figure to continue, close to exit programme...')
 
-    while True:
+    saveFig = saveAll
+
+    while options.wait and True:
         try:
             result = plt.waitforbuttonpress()
 
-            if result == True and figname and plotPath:
-                log.info('waitForClick - save figure: {}'.format(plotPath))
-                plt.savefig(plotPath)
+            if result == True:
+                saveFig = True
             
-            plt.close()
             break
         except:
             log.info('waitForClick - exiting programme on canvas close')
             sys.exit(0)
+
+    plotPath = getPlotPath(figname)
+
+    if figname and plotPath and saveFig:
+        log.info('waitForClick - save figure: {}'.format(plotPath))
+
+        if figname[:-3] in ['pdf', 'png']:
+            plt.savefig(plotPath)    
+        else:
+            plt.savefig('{}.pdf'.format(plotPath))
+            plt.savefig('{}.png'.format(plotPath))
+
+        plt.close()
 
 #----------------------------------------------------------------------------------------------
 def plotSimulatedHits(events):
@@ -1016,12 +1041,7 @@ def plotSimulatedHits(events):
 
     fig.show()
 
-    plotPath = getPlotPath('hits.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('hits')
 
 #----------------------------------------------------------------------------------------------
 def plotRecoClusters(events):
@@ -1105,12 +1125,7 @@ def plotRecoClusters(events):
 
     fig.show()
 
-    plotPath = getPlotPath('clusters.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('clusters')
 
 #----------------------------------------------------------------------------------------------
 def getMU20Eff():
@@ -1344,12 +1359,7 @@ def plotModelResults(events):
 
     fig.show()
 
-    plotPath = getPlotPath('results.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('results')
 
     if effRealBins and effReal and effCandBins and effCand:
         fig, ax = plt.subplots(figsize=(10, 8))
@@ -1369,12 +1379,7 @@ def plotModelResults(events):
         plt.xlim(3.0, 15.0)
         plt.ylim(0.0, 15.0)
 
-        plotPath = getPlotPath('results_effzoom.png')
-
-        if plotPath:
-            plt.savefig(plotPath)
-
-        waitForClick()
+        waitForClick('results_effzoom')
 
 #----------------------------------------------------------------------------------------------
 def plotLineDifferences(events):
@@ -1445,12 +1450,7 @@ def plotLineDifferences(events):
 
     fig.show()
 
-    plotPath = getPlotPath('differences.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('differences')
 
 #----------------------------------------------------------------------------------------------
 def plotCandEvents(events):
@@ -1541,12 +1541,7 @@ def plotCandEvents(events):
 
     fig.show()
 
-    plotPath = getPlotPath('candidates.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('candidates')
 
 #----------------------------------------------------------------------------------------------
 def plotCandQuality(events):
@@ -1559,15 +1554,39 @@ def plotCandQuality(events):
     rmLayers = []
     nmLayers = []
 
+    tmPt = []
+    nmPt = []
+
+    tmDiff1 = []
+    tmDiff2 = []
+    tmDiff3 = []
+
+    nmDiff1 = []
+    nmDiff2 = []
+    nmDiff3 = []
+
     for event in events:
         for cand in event.candEvents:
 
             if cand.hasNoiseCluster():
+                nmPt += [event.muonPt]
+
                 nmHits += [cand.getNHit()]
                 nmLayers += [cand.getNLayer()]
+
+                nmDiff1 += [event.path.getZatLayer(Layer.RPC1) - cand.predTrajectory.getZatLayer(Layer.RPC1)]
+                nmDiff2 += [event.path.getZatLayer(Layer.RPC2) - cand.predTrajectory.getZatLayer(Layer.RPC2)]
+                nmDiff3 += [event.path.getZatLayer(Layer.RPC3) - cand.predTrajectory.getZatLayer(Layer.RPC3)]
             else:
+                tmPt += [event.muonPt]
+
                 rmHits += [cand.getNHit()]
                 rmLayers += [cand.getNLayer()]
+
+                tmDiff1 += [event.path.getZatLayer(Layer.RPC1) - cand.predTrajectory.getZatLayer(Layer.RPC1)]
+                tmDiff2 += [event.path.getZatLayer(Layer.RPC2) - cand.predTrajectory.getZatLayer(Layer.RPC2)]
+                tmDiff3 += [event.path.getZatLayer(Layer.RPC3) - cand.predTrajectory.getZatLayer(Layer.RPC3)]
+
 
     fig, ax = plt.subplots(1, 2, figsize=(14, 5))
     plt.subplots_adjust(hspace=0.28, bottom=0.12, left=0.08, top=0.97, right=0.97)
@@ -1591,12 +1610,74 @@ def plotCandQuality(events):
 
     fig.show()
 
-    plotPath = getPlotPath('candidates_quality.png')
+    waitForClick('candidates_quality_hits')
 
-    if plotPath:
-        plt.savefig(plotPath)
+    '''--------------------------------------------
+    Plot 1d differences between true and predicted trajectories
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.15, bottom=0.12, left=0.08, top=0.97, right=0.97)
 
-    waitForClick()
+    dbins1 = [0.002*b for b in range(-50, 50)]
+    dbins2 = [0.002*b for b in range(-50, 50)]
+    dbins3 = [0.005*b for b in range(-50, 50)]
+
+    colorReal = 'royalblue'
+    colorNoise = 'yellowgreen'
+
+    ax[0].hist(nmDiff1, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
+    ax[1].hist(nmDiff2, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
+    ax[2].hist(nmDiff3, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
+
+    ax[0].hist(tmDiff1, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
+    ax[1].hist(tmDiff2, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
+    ax[2].hist(tmDiff3, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
+
+    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-9)
+    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-9)
+    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-9)
+
+    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14)
+    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14)
+    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14)
+
+    waitForClick('candidates_quality_diffs_1d')
+
+    '''--------------------------------------------
+    Plot 2d differences between true and predicted trajectories
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.22, bottom=0.12, left=0.08, top=0.97, right=0.97)
+
+    dbins1 = [0.002*b for b in range(-50, 50)]
+    dbins2 = [0.002*b for b in range(-50, 50)]
+    dbins3 = [0.005*b for b in range(-50, 50)]
+
+    colorReal = 'royalblue'
+    colorNoise = 'yellowgreen'
+
+    ax[0].scatter(tmPt, tmDiff1,  label=r'real $\mu$', color=colorReal, marker='.')
+    ax[1].scatter(tmPt, tmDiff2,  label=r'real $\mu$', color=colorReal, marker='.')
+    ax[2].scatter(tmPt, tmDiff3,  label=r'real $\mu$', color=colorReal, marker='.')
+
+    ax[0].scatter(nmPt, nmDiff1,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
+    ax[1].scatter(nmPt, nmDiff2,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
+    ax[2].scatter(nmPt, nmDiff3,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
+
+    ax[0].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$',  fontsize=14)
+    ax[1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$',  fontsize=14)
+    ax[2].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$',  fontsize=14)
+
+    ax[0].set_ylabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14, labelpad=-7)
+    ax[1].set_ylabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14, labelpad=-7)
+    ax[2].set_ylabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14, labelpad=-7)
+
+    ax[0].set_ylim(-0.12, 0.12)
+    ax[1].set_ylim(-0.12, 0.12)
+    ax[2].set_ylim(-0.12, 0.12)
+
+
+    waitForClick('candidates_quality_diffs_scatter')
 
 #----------------------------------------------------------------------------------------------
 def makeCandidates(event):
@@ -1824,7 +1905,7 @@ def drawEvent(event, candEvent=None):
 
     fig.show()
 
-    waitForClick(eventName)
+    waitForClick(eventName, saveAll=False)
 
 #----------------------------------------------------------------------------------------------
 def prepEvents():
@@ -1986,6 +2067,8 @@ def main():
 
     if options.plot:
         plotCandQuality(events)
+
+        return
 
         plotModelResults(events)
 
