@@ -52,6 +52,8 @@ p.add_option('--cluster-prob-3hit',  type='float', default = 0.05,  help = 'Prob
 p.add_option('--strip-width',        type='float', default = 0.03,  help = 'RPC strip width in meters')
 p.add_option('--rpc1-max-deltaz',    type='float', default = 0.15,  help = 'Maximum RPC1 delta z for making candidates')
 p.add_option('--rpc3-max-deltaz',    type='float', default = 0.60,  help = 'Maximum RPC3 delta z for making candidates')
+p.add_option('--draw-max-pt',        type='float', default = 30.0,  help = 'maximum muon pT for drawing event displays')
+
 
 p.add_option('--input-dim',             type='int',   default= 3)
 p.add_option('--output-dim',            type='int',   default= 1)
@@ -702,6 +704,25 @@ class CandEvent:
 
         return zl, yl
 
+    def getAngleToRPC1Cluster(self, degrees=True) -> float:
+        if degrees:
+            return 180*math.atan(self.rpc1Cluster.getY()/self.rpc1Cluster.getMeanZ())/math.pi
+        return math.atan(self.rpc1Cluster.getY()/self.rpc1Cluster.getMeanZ())
+
+    def makeRPC1Line(self):
+        '''Draw straight line through the RPC1 seed cluster centre
+        '''
+        zl = []
+        yl = []
+
+        angleRPC1 = self.getAngleToRPC1Cluster(degrees=False)
+
+        for i in range(1300):
+            zl += [i*0.01]
+            yl += [zl[-1]*math.tan(angleRPC1)]
+
+        return zl, yl
+
     def makePredLine(self):
         '''Draw trajectory corresponding to predicted muon pT, charge and angle
         '''
@@ -1007,7 +1028,7 @@ def waitForClick(figname=None, saveAll=True):
             plt.savefig('{}.pdf'.format(plotPath))
             plt.savefig('{}.png'.format(plotPath))
 
-        plt.close()
+    plt.close()
 
 #----------------------------------------------------------------------------------------------
 def plotSimulatedHits(events):
@@ -1243,8 +1264,8 @@ def plotModelResults(events):
     ax[0, 1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
     ax[0, 1].set_ylabel(r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=14, labelpad=labelPad)
 
-    ax[1, 0].set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
-    ax[1, 0].set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=14, labelpad=labelPad)
+    ax[1, 0].set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=14, labelpad=labelPad)
+    ax[1, 0].set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=14, labelpad=labelPad)
     ax[1, 0].legend(loc='best', prop={'size': 12}, frameon=False)
 
     ax[1, 1].set_ylabel('Muon candidates',  fontsize=14, labelpad=labelPad)
@@ -1438,8 +1459,8 @@ def plotEfficiency(events):
 
     ax.plot(effRealBins, effReal, label=r'Pure $\mu$',  color=muonColor)
     ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
-    ax.plot(effBestBins, effBest, label=r'Qual. 1 $\mu$',  color=bestColor)
-    ax.plot(effGoodBins, effGood, label=r'Qual. 2 $\mu$',  color=goodColor)
+    ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$',  color=bestColor)
+    ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$',  color=goodColor)
     ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor)
 
     ax.set_ylabel('Efficiency [%]',  fontsize=14)
@@ -1465,8 +1486,8 @@ def plotEfficiency(events):
 
     ax.plot(effRealBins, effRealScaled, label=r'Pure $\mu \times {:.3f}$' .format(scaleReal), color=muonColor)
     ax.plot(effCandBins, effCandScaled, label=r'Incl. $\mu \times {:.3f}$'.format(scaleCand), color=noiseColor)
-    ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
-    ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
+    ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 for incl. $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
+    ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 for incl. $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
     ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
 
     ax.set_ylabel('Efficiency [%]',  fontsize=14)
@@ -1489,8 +1510,8 @@ def plotEfficiency(events):
 
     ax.plot(effRealBins, effReal, label=r'Pure $\mu$', color=muonColor)
     ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
-    ax.plot(effBestBins, effBest, label=r'Qual. 1 $\mu$', color=bestColor)
-    ax.plot(effGoodBins, effGood, label=r'Qual. 2 $\mu$', color=goodColor)
+    ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor)
+    ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor)
     ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
 
     ax.set_ylabel('Efficiency [%]',  fontsize=14)
@@ -1688,6 +1709,14 @@ def plotQualityCand(events):
     nmDiff2 = []
     nmDiff3 = []
 
+    rmDiffHits1 = []
+    rmDiffHits2 = []
+    rmDiffHits3 = []
+
+    nmDiffHits1 = []
+    nmDiffHits2 = []
+    nmDiffHits3 = []
+
     rmPredHits = []
     nmPredHits = []
 
@@ -1714,6 +1743,10 @@ def plotQualityCand(events):
 
                 nmPredHits += [nPredHits]
                 nmPredLayers += [nPredLayers]
+
+                for hit in event.hits:
+                    pass
+
             else:
                 rmPt += [event.muonPt]
 
@@ -1803,9 +1836,9 @@ def plotQualityCand(events):
     ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-9)
     ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-9)
 
-    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14)
-    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14)
-    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14)
+    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
+    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
+    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
 
     waitForClick('candidates_quality_diffs_1d')
 
@@ -1830,13 +1863,13 @@ def plotQualityCand(events):
     ax[1].scatter(nmPt, nmDiff2,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
     ax[2].scatter(nmPt, nmDiff3,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
 
-    ax[0].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$',  fontsize=14)
-    ax[1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$',  fontsize=14)
-    ax[2].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$',  fontsize=14)
+    ax[0].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
+    ax[1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
+    ax[2].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
 
-    ax[0].set_ylabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14, labelpad=-7)
-    ax[1].set_ylabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14, labelpad=-7)
-    ax[2].set_ylabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$',  fontsize=14, labelpad=-7)
+    ax[0].set_ylabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-7)
+    ax[1].set_ylabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-7)
+    ax[2].set_ylabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-7)
 
     ax[0].set_ylim(-0.12, 0.12)
     ax[1].set_ylim(-0.12, 0.12)
@@ -2049,21 +2082,22 @@ def drawEvent(event, candEvent=None):
 
         ax.scatter([hit.getZ()], [hit.getY()+hoff], color=color, marker=marker, label=label, s=size)
 
-    ax.plot(zarr, yarr, label=r'Sim. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign), color='royalblue', linewidth=2)
-
-    if options.debug or options.draw_line:
-        ax.plot(zlin, ylin, linewidth=1, linestyle='--', color='orange', label='Sim. muon direction')
+    ax.plot(zarr, yarr, color='red', linewidth=1, label=r'Sim. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign))
 
     ax.set_xlabel('Beam axis z [m]',  fontsize=labelSize)
     ax.set_ylabel('Radial y [m]',  fontsize=labelSize)
 
-    if candEvent:
-        if getattr(candEvent, 'predTrajectory', None):
-            zpred, ypred = candEvent.makePredLine()
-            ax.plot(zpred, ypred, linewidth=1, linestyle='-', color='red', label=r'Pred. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(candEvent.predPt*candEvent.predSign))
+    if candEvent and getattr(candEvent, 'predTrajectory', None):
+        ax.plot(zlin, ylin, linewidth=1, linestyle='--', color='red', label='Sim. muon direction')
 
-            zseed, yseed = candEvent.makeSeedLine()
-            ax.plot(zseed, yseed, linewidth=1, linestyle='--', color='green', label='RPC2 seed cluster line')
+        zseed, yseed = candEvent.makeSeedLine()
+        ax.plot(zseed, yseed, linewidth=1, linestyle=':', color='c', label='RPC2 seed cluster line')
+
+        zpred, ypred = candEvent.makePredLine()
+        ax.plot(zpred, ypred, linewidth=1, linestyle='-', color='green', label=r'Pred. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(candEvent.predPt*candEvent.predSign))
+
+        zrpc1, yrpc1 = candEvent.makeRPC1Line()
+        ax.plot(zrpc1, yrpc1, linewidth=1, linestyle='-.', color='green', label='RPC1 cluster line')
 
     plt.xlim(minz, maxz)
     plt.ylim(miny, maxy)
@@ -2172,7 +2206,7 @@ def prepEvents():
                     log.info(result)
 
 
-        if options.draw:
+        if options.draw and (options.draw_max_pt == None or event.muonPt < options.draw_max_pt):
             drawEvent(event, cand)
 
     log.info('prepEvents - processed {} events in {:.1f}s'.format(len(events), time.time() - startTime))
