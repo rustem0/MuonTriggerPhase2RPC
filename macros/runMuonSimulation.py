@@ -791,7 +791,7 @@ class SimEvent:
 
         return icount
 
-    def getNearbyHits(self, trajectory, deltaz1=0.03, deltaz2=0.03, deltaz3=0.06):
+    def getNearbyHits(self, trajectory, deltaz1=0.04, deltaz2=0.04, deltaz3=0.06):
         '''getNearbyHits(self, trajectory, deltaz) -> trajectory is trajectory object, deltaz is parameter for selecting hits
            Collect and return all hits within deltaz distance to the trajectory in each layer.
         '''
@@ -1709,13 +1709,8 @@ def plotQualityCand(events):
     nmDiff2 = []
     nmDiff3 = []
 
-    rmDiffHits1 = []
-    rmDiffHits2 = []
-    rmDiffHits3 = []
-
-    nmDiffHits1 = []
-    nmDiffHits2 = []
-    nmDiffHits3 = []
+    rmDiffHits = defaultdict(lambda: defaultdict(list))
+    nmDiffHits = defaultdict(lambda: defaultdict(list))
 
     rmPredHits = []
     nmPredHits = []
@@ -1745,7 +1740,8 @@ def plotQualityCand(events):
                 nmPredLayers += [nPredLayers]
 
                 for hit in event.hits:
-                    pass
+                    hitDoublet = Layer.getDoublet(hit.strip.layer)
+                    nmDiffHits[hit.origin][hitDoublet] += [hit.strip.zcenter - cand.predTrajectory.getZatLayer(hitDoublet)]
 
             else:
                 rmPt += [event.muonPt]
@@ -1759,6 +1755,10 @@ def plotQualityCand(events):
 
                 rmPredHits += [nPredHits]
                 rmPredLayers += [nPredLayers]
+
+                for hit in event.hits:
+                    hitDoublet = Layer.getDoublet(hit.strip.layer)
+                    rmDiffHits[hit.origin][hitDoublet] += [hit.strip.zcenter - cand.predTrajectory.getZatLayer(hitDoublet)]
 
     '''--------------------------------------------
     Plot number of hits and layers using hits from candidate clusters
@@ -1801,10 +1801,11 @@ def plotQualityCand(events):
 
     ax[0].set_ylabel('Number of muon candidates', fontsize=14)
     ax[0].set_xlabel('Number of hits near predicted trajectory', fontsize=14)
-    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
 
     ax[1].set_ylabel('Number of muon candidates', fontsize=14)
     ax[1].set_xlabel('Number of layers with hits near predicted trajectory', fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
     ax[1].legend(loc='best', prop={'size': 12}, frameon=False)
 
     fig.show()
@@ -1815,14 +1816,15 @@ def plotQualityCand(events):
     Plot 1d differences between true and predicted trajectories
     '''
     fig, ax = plt.subplots(1, 3, figsize=(14, 5))
-    plt.subplots_adjust(wspace=0.15, bottom=0.12, left=0.08, top=0.97, right=0.97)
+    plt.subplots_adjust(wspace=0.17, bottom=0.12, left=0.05, top=0.97, right=0.97)
 
     dbins1 = [0.002*b for b in range(-50, 50)]
     dbins2 = [0.002*b for b in range(-50, 50)]
     dbins3 = [0.005*b for b in range(-50, 50)]
 
     colorReal = 'royalblue'
-    colorNoise = 'yellowgreen'
+    colorNearby = 'yellowgreen'
+    colorNoise = 'tab:orange'
 
     ax[0].hist(nmDiff1, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
     ax[1].hist(nmDiff2, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
@@ -1832,13 +1834,15 @@ def plotQualityCand(events):
     ax[1].hist(rmDiff2, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
     ax[2].hist(rmDiff3, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
 
-    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-9)
-    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-9)
-    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-9)
+    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-4)
 
     ax[0].set_xlabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
     ax[1].set_xlabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
     ax[2].set_xlabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
 
     waitForClick('candidates_quality_diffs_1d')
 
@@ -1846,14 +1850,9 @@ def plotQualityCand(events):
     Plot 2d differences between true and predicted trajectories
     '''
     fig, ax = plt.subplots(1, 3, figsize=(14, 5))
-    plt.subplots_adjust(wspace=0.22, bottom=0.12, left=0.08, top=0.97, right=0.97)
+    plt.subplots_adjust(wspace=0.22, bottom=0.12, left=0.065, top=0.97, right=0.97)
 
-    dbins1 = [0.002*b for b in range(-50, 50)]
-    dbins2 = [0.002*b for b in range(-50, 50)]
     dbins3 = [0.005*b for b in range(-50, 50)]
-
-    colorReal = 'royalblue'
-    colorNoise = 'yellowgreen'
 
     ax[0].scatter(rmPt, rmDiff1,  label=r'real $\mu$', color=colorReal, marker='.')
     ax[1].scatter(rmPt, rmDiff2,  label=r'real $\mu$', color=colorReal, marker='.')
@@ -1867,17 +1866,81 @@ def plotQualityCand(events):
     ax[1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
     ax[2].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
 
-    ax[0].set_ylabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-7)
-    ax[1].set_ylabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-7)
-    ax[2].set_ylabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-7)
+    ax[0].set_ylabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-4)
 
     ax[0].set_ylim(-0.12, 0.12)
     ax[1].set_ylim(-0.12, 0.12)
     ax[2].set_ylim(-0.12, 0.12)
 
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
     waitForClick('candidates_quality_diffs_scatter')
 
+    '''--------------------------------------------
+    Plot 1d differences between all hits and predicted trajectory for noise muons
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.17, bottom=0.12, left=0.05, top=0.97, right=0.97)
 
+    dbins3 = [0.005*b for b in range(-50, 50)]
+ 
+    ax[0].hist(nmDiffHits[Origin.MUON][Layer.RPC1],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[0].hist(nmDiffHits[Origin.NEARBY][Layer.RPC1], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[0].hist(nmDiffHits[Origin.NOISE][Layer.RPC1],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[1].hist(nmDiffHits[Origin.MUON][Layer.RPC2],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[1].hist(nmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[1].hist(nmDiffHits[Origin.NOISE][Layer.RPC2],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[2].hist(nmDiffHits[Origin.MUON][Layer.RPC3],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[2].hist(nmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[2].hist(nmDiffHits[Origin.NOISE][Layer.RPC3],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+
+    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{noise}~\mu}$ [m]',  fontsize=14)
+    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{noise}~\mu}$ [m]',  fontsize=14)
+    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{noise}~\mu}$ [m]',  fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    waitForClick('candidates_quality_hitdiff_noisemu')
+
+    '''--------------------------------------------
+    Plot 1d differences between all hits and predicted trajectory for real muons
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.17, bottom=0.12, left=0.05, top=0.97, right=0.97)
+
+    dbins3 = [0.005*b for b in range(-50, 50)]
+ 
+    ax[0].hist(rmDiffHits[Origin.MUON][Layer.RPC1],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[0].hist(rmDiffHits[Origin.NEARBY][Layer.RPC1], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[0].hist(rmDiffHits[Origin.NOISE][Layer.RPC1],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[1].hist(rmDiffHits[Origin.MUON][Layer.RPC2],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[1].hist(rmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[1].hist(rmDiffHits[Origin.NOISE][Layer.RPC2],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[2].hist(rmDiffHits[Origin.MUON][Layer.RPC3],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[2].hist(rmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[2].hist(rmDiffHits[Origin.NOISE][Layer.RPC3],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+
+    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{real}~\mu}$ [m]',  fontsize=14)
+    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{real}~\mu}$ [m]',  fontsize=14)
+    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{real}~\mu}$ [m]',  fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    waitForClick('candidates_quality_hitdiff_realmu')    
 
 #----------------------------------------------------------------------------------------------
 def makeCandidates(event):
@@ -2267,9 +2330,10 @@ def main():
     writeCandEvents(events)
 
     if options.plot:
-        plotEfficiency(events)
+        #plotEfficiency(events)
 
         plotQualityCand(events)
+        return
 
         plotModelResults(events)
 
