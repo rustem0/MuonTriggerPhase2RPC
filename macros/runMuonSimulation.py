@@ -27,17 +27,17 @@ import collections
 import matplotlib.pyplot as plt
 import statistics as stat
 import numpy as np
-from numpy.lib.function_base import angle
 import torch
 import torch.nn as nn
 
+from scipy.optimize import root
 from collections import defaultdict
 from enum import Enum
 from optparse import OptionParser
 
 p = OptionParser()
 
-p.add_option('--nevent', '-n',       type='int',   default = 30,    help = 'number of events to simulate')
+p.add_option('--nevent', '-n',       type='int',   default =  0,    help = 'number of events to simulate')
 p.add_option('--min-angle',          type='int',   default = 85,    help = 'minimum muon angle in degrees')
 p.add_option('--max-angle',          type='int',   default = 40,    help = 'maximum muon angle in degrees')
 p.add_option('--seed',               type='int',   default = 42,    help = 'random seed')
@@ -52,6 +52,8 @@ p.add_option('--cluster-prob-3hit',  type='float', default = 0.05,  help = 'Prob
 p.add_option('--strip-width',        type='float', default = 0.03,  help = 'RPC strip width in meters')
 p.add_option('--rpc1-max-deltaz',    type='float', default = 0.15,  help = 'Maximum RPC1 delta z for making candidates')
 p.add_option('--rpc3-max-deltaz',    type='float', default = 0.60,  help = 'Maximum RPC3 delta z for making candidates')
+p.add_option('--draw-max-pt',        type='float', default = 30.0,  help = 'maximum muon pT for drawing event displays')
+
 
 p.add_option('--input-dim',             type='int',   default= 3)
 p.add_option('--output-dim',            type='int',   default= 1)
@@ -62,10 +64,10 @@ p.add_option('--fc3',                   type='int',   default=20)
 p.add_option('-d', '--debug',     action = 'store_true', default = False, help='print debug info')
 p.add_option('-v', '--verbose',   action = 'store_true', default = False, help='print debug info')
 p.add_option('--draw',            action = 'store_true', default = False, help='draw event display')
+p.add_option('--draw-line',       action = 'store_true', default = False, help='draw muon direction line')
 p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
 p.add_option('-w', '--wait',      action = 'store_true', default = False, help='wait for click on figures to continue')
 
-p.add_option('--show-net',        action = 'store_true', default = False, help='show network')
 p.add_option('--logy',            action = 'store_true', default = False, help='draw histograms with log Y')
 p.add_option('--veto-noise-cand', action = 'store_true', default = False, help='veto candidates containing noise hits')
 p.add_option('--do-pdf',          action = 'store_true', default = False, help='save figures as PDF')
@@ -220,6 +222,10 @@ class Layer(Enum):
             return Layer.RPC3
 
         raise Exception('getDoublet - unknown enum: %s' %layer)
+
+    @staticmethod
+    def getAllLayers():
+        return [Layer.RPC11, Layer.RPC12, Layer.RPC21, Layer.RPC22, Layer.RPC31, Layer.RPC32]
 
 #----------------------------------------------------------------------------------------------
 class Net(nn.Module):
@@ -386,6 +392,14 @@ layerRPC11 = SingleLayer(layer=Layer.RPC11, z1=0, z2=9.60, y=6.80)
 
 allLayers = [layerRPC11, layerRPC12, layerRPC21, layerRPC22, layerRPC31, layerRPC32]
 
+dictLayers = {Layer.RPC32:layerRPC32,
+              Layer.RPC31:layerRPC31,
+              Layer.RPC22:layerRPC22,
+              Layer.RPC21:layerRPC21,
+              Layer.RPC12:layerRPC12,
+              Layer.RPC11:layerRPC11
+            }
+
 #----------------------------------------------------------------------------------------------
 class Trajectory:
     '''Trajectory - solve muon trajectory y = f(z) under these constraints:
@@ -468,6 +482,19 @@ class Trajectory:
 
         raise Exception('getZatY - z out of range: y={}, z1={}, z2={}'.format(y, z1, z2))
 
+    def getZatLayer(self, layer):
+
+        if layer in dictLayers:
+            return self.getZatY(dictLayers[layer].y)
+        
+        if layer == Layer.RPC1:
+            return self.getZatY(0.5*(layerRPC11.y + layerRPC12.y))
+        if layer == Layer.RPC2:
+            return self.getZatY(0.5*(layerRPC21.y + layerRPC22.y))
+        if layer == Layer.RPC3:
+            return self.getZatY(0.5*(layerRPC31.y + layerRPC32.y))
+
+        return None
 
     def getLinearYatZ(self, z):
         return z*math.tan(self.muonAngle)
@@ -492,6 +519,76 @@ class Trajectory:
         return s
 
 #----------------------------------------------------------------------------------------------
+class PredPath:
+    '''PredPath - solve predicted muon trajectory y = f(z) under these constraints:
+            - Muon passes through seed point zs, ys
+            - Muon passes through point at zr, yr = rpc_radius - where zr to be determined
+            - Muon trajectory tangent at zr, yr = artan(yr/zr) - straight line passing (0, 0) and (zr, yr)
+    '''
+
+    def __init__(self, seedz, seedy, predMuonQPt) -> None:
+        self.seedz          = seedz
+        self.seedy          = seedy
+        self.predMuonQPt    = predMuonQPt
+        self.predMuonRadius = abs(self.predMuonQPt)*6.6
+
+        self.result = None
+
+    def __str__(self) -> str:
+        return self.printPredPath()
+
+    def hasConverged(self):
+        return self.getStatus() == 1
+
+    def getStatus(self):
+        if self.result == None:
+            return 0
+        return self.result.status
+
+    def getPredAngle(self):
+        if self.result == None:
+            return None
+
+        return math.atan(options.rpc_radius/self.result.x[0])
+
+    def getPredAngleDeg(self):
+        angle = self.getPredAngle()
+
+        if angle == None:
+            return None
+
+        return 180*angle/math.pi
+
+    def solveTrajectory(self, initx):
+        self.result = root(self.getFunc, initx, tol=1e-9)
+
+        return self.result
+
+    def getFunc(self, x):
+        zr = x[0]
+        z0 = x[1]
+        y0 = x[2]
+
+        zs = self.seedz
+        ys = self.seedy
+        yr = options.rpc_radius
+
+        f0 = (zs - z0)**2 + (ys - y0)**2 - self.predMuonRadius**2
+        f1 = (zr - z0)**2 + (yr - y0)**2 - self.predMuonRadius**2
+        f2 = (yr**2)*(self.predMuonRadius**2 - (zr - z0)**2) -4*(zr**2)*((zr - z0)**2)
+
+        return (f0, f1, f2)
+
+    def printPredPath(self):
+        s = 'PredPath - seedz = {:.4f}, seedy = {:.4f}, predMuonQPt = {:.1f}, predMuonRadius = {:.1f}'.format(
+            self.seedz,
+            self.seedy,
+            self.predMuonQPt,
+            self.predMuonRadius)
+
+        return s
+
+#----------------------------------------------------------------------------------------------
 class CandEvent:
 
     def __init__(self, simEvent, seedCluster):
@@ -508,14 +605,31 @@ class CandEvent:
         self.muonPt      = simEvent.muonPt
         self.muonAngle   = simEvent.muonAngle
 
-        self.predPt      = None
-        self.predSign    = None
+        self.predPt         = None
+        self.predSign       = None
+        self.predPath       = None
+        self.predTrajectory = None
+
+        self._hasNoiseCluster = None
+        self._passQualityCuts = None
 
     def getMuonQPt(self):
         return self.muonPt*self.muonSign
 
     def getPredQPt(self):
         return self.predPt*self.predSign
+
+    def getMuonQoverPt(self):
+        return self.muonSign/self.muonPt
+
+    def getPredQoverPt(self):
+        return self.predSign/self.predPt
+
+    def getPredSign(self):
+        return self.predSign
+
+    def getPredPt(self):
+        return self.predPt
 
     def getMuonAngleDegrees(self):
         return 180*self.muonAngle/math.pi
@@ -532,6 +646,9 @@ class CandEvent:
     def getNHit(self, origin=None):
         return self.seedCluster.getNHit(origin) + self.rpc1Cluster.getNHit(origin) + self.rpc3Cluster.getNHit(origin)
 
+    def getNLayer(self, origin=None):
+        return self.seedCluster.getNLayer(origin) + self.rpc1Cluster.getNLayer(origin) + self.rpc3Cluster.getNLayer(origin)
+
     def getSeedZ(self):
         return self.seedCluster.getMeanZ()
 
@@ -545,7 +662,16 @@ class CandEvent:
         return self.rpc3Cluster.getNHit() > 0 and self.rpc3Cluster.getNHit() == self.rpc3Cluster.getNHit(Origin.NOISE)
 
     def hasNoiseCluster(self):
-        return self.isSeedNoise() or self.isRPC1Noise() or self.isRPC3Noise()
+        if self._hasNoiseCluster == None:
+            self._hasNoiseCluster = (self.isSeedNoise() or self.isRPC1Noise() or self.isRPC3Noise())
+
+        return self._hasNoiseCluster
+
+    def passQualityCuts(self):
+        if self._passQualityCuts == None:
+            self._passQualityCuts = (self.getNHit() >= 6 and self.getNLayer() >= 4 )
+
+        return self._passQualityCuts
 
     def setModelPred(self, value):
         self.predPt   = abs(10.0/float(value))
@@ -554,9 +680,8 @@ class CandEvent:
 
     def getCandVars(self):
         '''Return variables for NN training and testing, also truth information.
-           Variables are normalised to std variation of about 1 and centred at 0.
+           Variables are normalised to produced distributions with std variation of ~1 and centred at ~0.
         '''
-
         return [(self.getSeedZ()-4.0)/2.0,
                 self.rpc1DeltaZ/0.04,
                 self.rpc3DeltaZ/0.16,
@@ -568,6 +693,8 @@ class CandEvent:
                 int(self.hasNoiseCluster())]
 
     def makeSeedLine(self):
+        '''Draw straight line through the RPC2 seed cluster centre
+        '''
         zl = []
         yl = []
 
@@ -576,6 +703,43 @@ class CandEvent:
             yl += [zl[-1]*math.tan(self.seedAngle)]
 
         return zl, yl
+
+    def getAngleToRPC1Cluster(self, degrees=True) -> float:
+        if degrees:
+            return 180*math.atan(self.rpc1Cluster.getY()/self.rpc1Cluster.getMeanZ())/math.pi
+        return math.atan(self.rpc1Cluster.getY()/self.rpc1Cluster.getMeanZ())
+
+    def makeRPC1Line(self):
+        '''Draw straight line through the RPC1 seed cluster centre
+        '''
+        zl = []
+        yl = []
+
+        angleRPC1 = self.getAngleToRPC1Cluster(degrees=False)
+
+        for i in range(1300):
+            zl += [i*0.01]
+            yl += [zl[-1]*math.tan(angleRPC1)]
+
+        return zl, yl
+
+    def makePredLine(self):
+        '''Draw trajectory corresponding to predicted muon pT, charge and angle
+        '''
+        zp = []
+        yp = []
+
+        if self.predTrajectory:
+            for i in range(0, 1200):
+                y = i*0.01
+                z = self.predTrajectory.getZatY(y)
+
+                if z != None:
+                    zp += [z]
+                    yp += [y]
+
+        return (zp, yp)
+
 #----------------------------------------------------------------------------------------------
 class SimEvent:
 
@@ -626,6 +790,26 @@ class SimEvent:
                 icount += 1
 
         return icount
+
+    def getNearbyHits(self, trajectory, deltaz1=0.04, deltaz2=0.04, deltaz3=0.06):
+        '''getNearbyHits(self, trajectory, deltaz) -> trajectory is trajectory object, deltaz is parameter for selecting hits
+           Collect and return all hits within deltaz distance to the trajectory in each layer.
+        '''
+
+        results = defaultdict(list)
+
+        for layer in Layer.getAllLayers():
+            trajz = trajectory.getZatLayer(layer)
+
+            if Layer.getDoublet(layer) == Layer.RPC1: deltaz = deltaz1
+            if Layer.getDoublet(layer) == Layer.RPC2: deltaz = deltaz2
+            if Layer.getDoublet(layer) == Layer.RPC3: deltaz = deltaz3
+
+            for hit in self.hits:
+                if hit.strip.layer == layer and abs(trajz - hit.strip.zcenter) < deltaz:
+                    results[layer] += [hit]
+
+        return results
 
 #----------------------------------------------------------------------------------------------
 class Cluster:
@@ -701,6 +885,15 @@ class Cluster:
 
     def getNHit(self, origin=None):
         return sum(map(lambda x: x.origin == origin or origin == None, self.hits))
+
+    def getNLayer(self, origin=None):
+        layers = set()
+
+        for hit in self.hits:
+            if hit.origin == origin or origin == None:
+                layers.add(hit.strip.layer)
+
+        return len(layers)
 
 #----------------------------------------------------------------------------------------------
 def collectClusterHits(cluster, hits):
@@ -806,32 +999,36 @@ def reconstructClusters(event):
     event.superClusters  = superDict
 
 #----------------------------------------------------------------------------------------------
-def waitForClick(figname=None):
-
-    plotPath = getPlotPath(figname)
-
-    if not options.wait:
-        if figname and plotPath:
-            log.info('waitForClick - save figure: {}'.format(plotPath))
-            plt.savefig(plotPath)    
-            plt.close()
-        return
+def waitForClick(figname=None, saveAll=True):
 
     log.info('Click on figure to continue, close to exit programme...')
 
-    while True:
+    saveFig = saveAll
+
+    while options.wait and True:
         try:
             result = plt.waitforbuttonpress()
 
-            if result == True and figname and plotPath:
-                log.info('waitForClick - save figure: {}'.format(plotPath))
-                plt.savefig(plotPath)
+            if result == True:
+                saveFig = True
             
-            plt.close()
             break
         except:
-            log.info('waitForClick - exiting programme on canvas close')
+            log.info('waitForClick - exiting programme on canvas closure')
             sys.exit(0)
+
+    plotPath = getPlotPath(figname)
+
+    if figname and plotPath and saveFig:
+        log.info('waitForClick - save figure: {}'.format(plotPath))
+
+        if figname[:-3] in ['pdf', 'png']:
+            plt.savefig(plotPath)    
+        else:
+            plt.savefig('{}.pdf'.format(plotPath))
+            plt.savefig('{}.png'.format(plotPath))
+
+    plt.close()
 
 #----------------------------------------------------------------------------------------------
 def plotSimulatedHits(events):
@@ -895,12 +1092,7 @@ def plotSimulatedHits(events):
 
     fig.show()
 
-    plotPath = getPlotPath('hits.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('hits')
 
 #----------------------------------------------------------------------------------------------
 def plotRecoClusters(events):
@@ -984,12 +1176,7 @@ def plotRecoClusters(events):
 
     fig.show()
 
-    plotPath = getPlotPath('clusters.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('clusters')
 
 #----------------------------------------------------------------------------------------------
 def getMU20Eff():
@@ -1006,10 +1193,105 @@ def getMU20Eff():
     return (cens, effs)
 
 #----------------------------------------------------------------------------------------------
+def plotModelResults(events):
+
+    if options.torch_model == None:
+        return
+
+    log.info('plotModelResults - plot NN model results for {:d} simulated events'.format(len(events)))
+
+    realMuonQPt = []
+    realPredQPt = []
+
+    noiseMuonQPt = []
+    noisePredQPt = []
+
+    realMuonQoverPt = []
+    realPredQoverPt = []
+
+    noiseMuonQoverPt = []
+    noisePredQoverPt = []
+
+    for event in events:
+        for cand in event.candEvents:
+
+            if cand.hasNoiseCluster():
+                noiseMuonQPt += [cand.getMuonQPt()]
+                noisePredQPt += [cand.getPredQPt()]
+
+                noiseMuonQoverPt += [cand.getMuonQoverPt()]
+                noisePredQoverPt += [cand.getPredQoverPt()]
+            else:
+                realMuonQPt += [cand.getMuonQPt()]
+                realPredQPt += [cand.getPredQPt()]
+
+                realMuonQoverPt += [cand.getMuonQoverPt()]
+                realPredQoverPt += [cand.getPredQoverPt()]
+
+    fig, ax = plt.subplots(2, 2, figsize=(12, 12))
+    plt.subplots_adjust(wspace=0.2, hspace=0.30, bottom=0.08, left=0.08, top=0.97, right=0.97)
+
+    amReal = np.array(realMuonQPt)
+    apReal = np.array(realPredQPt)
+
+    amNoise = np.array(noiseMuonQPt)
+    apNoise = np.array(noisePredQPt)
+
+    dpReal  = (amReal  - apReal) /np.abs(amReal)
+    dpNoise = (amNoise - apNoise)/np.abs(amNoise)
+
+    dbins = [b*0.008 for b in range(-100, 100)]
+
+    muonColor  = 'royalblue'
+    noiseColor = 'yellowgreen'
+    labelPad = -1
+
+    ax[0, 0].scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
+    ax[0, 0].scatter(amNoise, apNoise, s=1, label=r'Noise $\mu$', c=noiseColor)
+
+    ax[1, 0].scatter(realMuonQoverPt,  realPredQoverPt,  s=1, label=r'Pure $\mu$', c=muonColor)
+    ax[1, 0].scatter(noiseMuonQoverPt, noisePredQoverPt, s=1, label=r'Noise $\mu$', c=noiseColor)
+
+    ax[0, 1].scatter(np.abs(amReal),  dpReal,  s=1, c=muonColor)
+    ax[0, 1].scatter(np.abs(amNoise), dpNoise, s=1, c=noiseColor)
+
+    ax[1, 1].hist(dpReal,  bins=dbins, log=options.logy, label=r'Pure $\mu$', color=muonColor)
+    ax[1, 1].hist(dpNoise, bins=dbins, log=options.logy, label=r'Noise $\mu$', color=noiseColor)
+
+    ax[0, 0].set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
+    ax[0, 0].set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=14, labelpad=labelPad)
+
+    ax[0, 1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
+    ax[0, 1].set_ylabel(r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=14, labelpad=labelPad)
+
+    ax[1, 0].set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=14, labelpad=labelPad)
+    ax[1, 0].set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=14, labelpad=labelPad)
+    ax[1, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    ax[1, 1].set_ylabel('Muon candidates',  fontsize=14, labelpad=labelPad)
+    ax[1, 1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14, labelpad=labelPad)
+    ax[1, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+
+
+    limPt = 30.0
+    limdp = 0.7
+
+    ax[0, 0].set_xlim(-limPt, limPt)
+    ax[0, 0].set_ylim(-limPt, limPt)
+
+    ax[1, 0].set_ylim(-0.33, 0.33)
+    ax[1, 0].set_ylim(-0.33, 0.33)
+
+    ax[0, 1].set_ylim(-limdp, limdp)
+
+    fig.show()
+
+    waitForClick('results')
+
+#----------------------------------------------------------------------------------------------
 def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
 
-    ebins = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40, 50, 60, 70, 80, 85]
-    ebins = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 25, 30]
+    ebins = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 25, 30]
     ebins = [b for b in range(3, 31)]
 
     resultBins = None
@@ -1026,7 +1308,8 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
 
         leff = []
         beff = []
-        eff20 = None
+        eff20 = None # efficiency at first pT>20 GeV bin
+        eff25 = None # efficiency at first pT>25 GeV bin
 
         for i in range(len(denCounts)):
             den = denCounts[i]
@@ -1039,14 +1322,16 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
             else:
                 leff += [0.0]
 
-            if eff20 == None and beff[-1] > 20.0:
+            if eff20 == None and beff[-1] > 20.1:
                 eff20 = leff[-1]
+                log.debug('prepEffPlot - eff20 efficiency = {:d}/{:d} = {:.4f} for pT > {:d} MeV, beff[-1] = {}'.format(num, den, leff[-1], mev, beff[-1]))
 
-            if eff20 != None:
-                log.debug('prepEffPlot - efficiency = {:d}/{:d} = {:.4f} for pT > {:d} MeV'.format(num, den, leff[-1], mev))
+            if eff25 == None and beff[-1] > 25.1:
+                eff25 = leff[-1]
+                log.debug('prepEffPlot - eff25 efficiency = {:d}/{:d} = {:.4f} for pT > {:d} MeV, beff[-1] = {}'.format(num, den, leff[-1], mev, beff[-1]))
 
-        if eff20 != None and eff20 > 95.0 and resultEffs == None:
-            log.info('prepEffPlot - efficiency at 20 GeV = {:.4f} for pT > {:d} MeV'.format(eff20, mev))
+        if eff20 != None and eff25 != None and eff20 > 0.95*eff25 and resultEffs == None:
+            log.info('prepEffPlot - record efficiency at 20 GeV = {:.4f} for pT > {:d} MeV'.format(eff20, mev))
             resultBins = beff
             resultEffs = leff
 
@@ -1070,6 +1355,8 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
         verbose('Length ebins={}'.format(len(ebins)))
 
         if plot:
+            log.info('Plot efficiency for mev = {}'.format(mev))
+
             fig, ax = plt.subplots(3, figsize=(6, 10))
 
             plt.subplots_adjust(hspace=0.28, bottom=0.08, left=0.08, top=0.97, right=0.97)
@@ -1081,27 +1368,29 @@ def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
 
             waitForClick()
 
-    if resultBins == None and resultEffs:
+    if resultBins == None or resultEffs == None:
         log.info('PrepEff - failed to find 95% efficiency at 20 GeV')
-        return (None, None)
+        return (None, None, None)
 
-    if scaleToATLAS:
-        plateau = []
+    ''' Compute scale factor to match efficiency plateau to MU20 efficiency of70%
+    '''
+    plateau = []
 
-        for i, bin in enumerate(resultBins):
-            if bin > 25.0:
-                plateau += [resultEffs[i]]
+    for i, bin in enumerate(resultBins):
+        if bin > 25.0:
+            plateau += [resultEffs[i]]
 
+    if len(plateau):
         scale = 70.0/stat.mean(plateau)
+    else:
+        scale = None
 
-        resultEffs = [eff*scale for eff in resultEffs]
+    log.info('prepEff - scaled efficiency by {}'.format(scale))
 
-        log.info('prepEff - scaled efficiency by {}'.format(scale))
-
-    return resultBins, resultEffs
-
+    return resultBins, resultEffs, scale
+    
 #----------------------------------------------------------------------------------------------
-def plotModelResults(events):
+def plotEfficiency(events):
 
     if options.torch_model == None:
         return
@@ -1111,26 +1400,21 @@ def plotModelResults(events):
     muonQPt = []
     predQPt = []
 
-    realMuonQPt = []
-    realPredQPt = []
-
-    noiseMuonQPt = []
-    noisePredQPt = []
-
     passCandQPt = defaultdict(list)
     passRealQPt = defaultdict(list)
+    passBestQPt = defaultdict(list)
+    passGoodQPt = defaultdict(list)
 
     for event in events:
         for cand in event.candEvents:
+
+            predHits = event.getNearbyHits(cand.predTrajectory)
+
+            nPredLayers = len(predHits)
+            nPredHits = sum([len(v) for v in predHits.values()])
+
             muonQPt += [cand.getMuonQPt()]
             predQPt += [cand.getPredQPt()]
-
-            if cand.hasNoiseCluster():
-                noiseMuonQPt += [cand.getMuonQPt()]
-                noisePredQPt += [cand.getPredQPt()]
-            else:
-                realMuonQPt += [cand.getMuonQPt()]
-                realPredQPt += [cand.getPredQPt()]
 
             #
             # Fill numerators and denominators for efficiency plots
@@ -1142,79 +1426,104 @@ def plotModelResults(events):
                     if not cand.hasNoiseCluster():
                         passRealQPt[mev] += [cand.getMuonQPt()]
 
-    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
+                    if nPredHits > 5 and nPredLayers > 4:
+                        passGoodQPt[mev] += [cand.getMuonQPt()]
 
-    plt.subplots_adjust(hspace=0.30, bottom=0.08, left=0.08, top=0.97, right=0.97)
+                    if cand.passQualityCuts():
+                        passBestQPt[mev] += [cand.getMuonQPt()]
 
-    amAll = np.array(muonQPt)
-    apAll = np.array(predQPt)
-
-    amReal = np.array(realMuonQPt)
-    apReal = np.array(realPredQPt)
-
-    amNoise = np.array(noiseMuonQPt)
-    apNoise = np.array(noisePredQPt)
-
-    dpAll   = (amAll   - apAll)  /np.abs(amAll)
-    dpReal  = (amReal  - apReal) /np.abs(amReal)
-    dpNoise = (amNoise - apNoise)/np.abs(amNoise)
-
-    dbins = [b*0.008 for b in range(-100, 100)]
-
-    muonColor = 'royalblue'
+    muonColor  = 'royalblue'
     noiseColor = 'yellowgreen'
+    bestColor  = 'magenta'
+    goodColor  = 'black'
     atlasColor = 'tab:orange'
 
-    ax[0, 0].scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
-    ax[0, 0].scatter(amNoise, apNoise, s=1, label=r'Noise $\mu$', c=noiseColor)
+    limPt = 30.0
 
-    ax[0, 1].scatter(np.abs(amReal),  dpReal,  s=1, c=muonColor)
-    ax[0, 1].scatter(np.abs(amNoise), dpNoise, s=1, c=noiseColor)
+    effRealBins, effReal, scaleReal = prepEffPlot(muonQPt, passRealQPt)
+    effCandBins, effCand, scaleCand = prepEffPlot(muonQPt, passCandQPt)
+    effBestBins, effBest, scaleBest = prepEffPlot(muonQPt, passBestQPt, plot=False)
+    effGoodBins, effGood, scaleGood = prepEffPlot(muonQPt, passGoodQPt, plot=False)
 
-    ax[1, 0].hist(dpReal,  bins=dbins, log=options.logy, label=r'Pure $\mu$', color=muonColor)
-    ax[1, 0].hist(dpNoise, bins=dbins, log=options.logy, label=r'Noise $\mu$', color=noiseColor)
-
-    effRealBins, effReal = prepEffPlot(muonQPt, passRealQPt)
-    effCandBins, effCand = prepEffPlot(muonQPt, passCandQPt)
     effMU20Bins, effMU20 = getMU20Eff()
 
-    if effRealBins and effReal and effCandBins and effCand:
-        ax[1, 1].plot(effRealBins, effReal, label=r'Pure $\mu \times 0.7$', color=muonColor)
-        ax[1, 1].plot(effCandBins, effCand, label=r'Noise $\mu \times 0.7$', color=noiseColor)
-        ax[1, 1].plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
+    if not effRealBins or not effReal or not effCandBins or not effCand:
+        log.info('plotEfficiency - failed to compute efficiency curves')
+        return
 
-    ax[0, 0].set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
-    ax[0, 0].set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=14)
+    '''--------------------------------------------
+    Plot efficiency 
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
 
-    ax[0, 1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
-    ax[0, 1].set_ylabel(r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=14)
+    ax.plot(effRealBins, effReal, label=r'Pure $\mu$',  color=muonColor)
+    ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
+    ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$',  color=bestColor)
+    ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$',  color=goodColor)
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor)
 
-    ax[1, 0].set_ylabel('Candidate events',  fontsize=14)
-    ax[1, 0].set_xlabel(r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=14)
-    ax[1, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.set_ylabel('Efficiency [%]',  fontsize=14)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
+    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.xaxis.grid(True)
+    ax.yaxis.grid(True)
+    ax.set_xlim(3.0, limPt)
+    ax.set_ylim(0.0, 105.0)
 
-    ax[1, 1].set_ylabel('Efficiency [%]',  fontsize=14)
-    ax[1, 1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
-    ax[1, 1].legend(loc='best', prop={'size': 12}, frameon=False)
-    ax[1, 1].xaxis.grid(True)
-    ax[1, 1].yaxis.grid(True)
+    waitForClick('efficiency')
 
-    limPt = 30.0
-    limdp = 0.7
+    '''--------------------------------------------
+    Plot efficiency scaled to 70% plateau
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
 
-    ax[0, 0].set_xlim(-limPt, limPt)
-    ax[0, 0].set_ylim(-limPt, limPt)
-    ax[0, 1].set_ylim(-limdp, limdp)
-    ax[1, 1].set_xlim(   3.0, limPt)
+    effRealScaled = [x*scaleReal for x in effReal]
+    effCandScaled = [x*scaleCand for x in effCand]
+    effBestScaled = [x*scaleBest for x in effBest]
+    effGoodScaled = [x*scaleGood for x in effGood]
+
+    ax.plot(effRealBins, effRealScaled, label=r'Pure $\mu \times {:.3f}$' .format(scaleReal), color=muonColor)
+    ax.plot(effCandBins, effCandScaled, label=r'Incl. $\mu \times {:.3f}$'.format(scaleCand), color=noiseColor)
+    ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 for incl. $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
+    ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 for incl. $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
+
+    ax.set_ylabel('Efficiency [%]',  fontsize=14)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
+    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.xaxis.grid(True)
+    ax.yaxis.grid(True)
+    ax.set_xlim(3.0, limPt)
+    ax.set_ylim(0.0, 80.0)
 
     fig.show()
 
-    plotPath = getPlotPath('results.png')
+    waitForClick('efficiency_scaled')
 
-    if plotPath:
-        plt.savefig(plotPath)
+    '''--------------------------------------------
+    Plot zoomed y-axis efficiency plots
+    '''
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
 
-    waitForClick()
+    ax.plot(effRealBins, effReal, label=r'Pure $\mu$', color=muonColor)
+    ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
+    ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor)
+    ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor)
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
+
+    ax.set_ylabel('Efficiency [%]',  fontsize=14)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
+    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.xaxis.grid(True)
+    ax.yaxis.grid(True)
+
+    plt.xlim(3.0, 15.0)
+    plt.ylim(0.0, 15.0)
+
+    waitForClick('efficiency_zoom')
 
 #----------------------------------------------------------------------------------------------
 def plotLineDifferences(events):
@@ -1285,12 +1594,7 @@ def plotLineDifferences(events):
 
     fig.show()
 
-    plotPath = getPlotPath('differences.png')
-
-    if plotPath:
-        plt.savefig(plotPath)
-
-    waitForClick()
+    waitForClick('differences')
 
 #----------------------------------------------------------------------------------------------
 def plotCandEvents(events):
@@ -1381,12 +1685,262 @@ def plotCandEvents(events):
 
     fig.show()
 
-    plotPath = getPlotPath('candidates.png')
+    waitForClick('candidates')
 
-    if plotPath:
-        plt.savefig(plotPath)
+#----------------------------------------------------------------------------------------------
+def plotQualityCand(events):
 
-    waitForClick()
+    log.info('plotQualityCand - plot candidates for {:d} simulated events'.format(len(events)))
+
+    rmHits = []
+    nmHits = []
+
+    rmLayers = []
+    nmLayers = []
+
+    rmPt = []
+    nmPt = []
+
+    rmDiff1 = []
+    rmDiff2 = []
+    rmDiff3 = []
+
+    nmDiff1 = []
+    nmDiff2 = []
+    nmDiff3 = []
+
+    rmDiffHits = defaultdict(lambda: defaultdict(list))
+    nmDiffHits = defaultdict(lambda: defaultdict(list))
+
+    rmPredHits = []
+    nmPredHits = []
+
+    rmPredLayers = []
+    nmPredLayers = []
+
+    for event in events:
+        for cand in event.candEvents:
+
+            predHits = event.getNearbyHits(cand.predTrajectory)
+
+            nPredLayers = len(predHits)
+            nPredHits = sum([len(v) for v in predHits.values()])
+
+            if cand.hasNoiseCluster():
+                nmPt += [event.muonPt]
+
+                nmHits += [cand.getNHit()]
+                nmLayers += [cand.getNLayer()]
+
+                nmDiff1 += [event.path.getZatLayer(Layer.RPC1) - cand.predTrajectory.getZatLayer(Layer.RPC1)]
+                nmDiff2 += [event.path.getZatLayer(Layer.RPC2) - cand.predTrajectory.getZatLayer(Layer.RPC2)]
+                nmDiff3 += [event.path.getZatLayer(Layer.RPC3) - cand.predTrajectory.getZatLayer(Layer.RPC3)]
+
+                nmPredHits += [nPredHits]
+                nmPredLayers += [nPredLayers]
+
+                for hit in event.hits:
+                    hitDoublet = Layer.getDoublet(hit.strip.layer)
+                    nmDiffHits[hit.origin][hitDoublet] += [hit.strip.zcenter - cand.predTrajectory.getZatLayer(hitDoublet)]
+
+            else:
+                rmPt += [event.muonPt]
+
+                rmHits += [cand.getNHit()]
+                rmLayers += [cand.getNLayer()]
+
+                rmDiff1 += [event.path.getZatLayer(Layer.RPC1) - cand.predTrajectory.getZatLayer(Layer.RPC1)]
+                rmDiff2 += [event.path.getZatLayer(Layer.RPC2) - cand.predTrajectory.getZatLayer(Layer.RPC2)]
+                rmDiff3 += [event.path.getZatLayer(Layer.RPC3) - cand.predTrajectory.getZatLayer(Layer.RPC3)]
+
+                rmPredHits += [nPredHits]
+                rmPredLayers += [nPredLayers]
+
+                for hit in event.hits:
+                    hitDoublet = Layer.getDoublet(hit.strip.layer)
+                    rmDiffHits[hit.origin][hitDoublet] += [hit.strip.zcenter - cand.predTrajectory.getZatLayer(hitDoublet)]
+
+    '''--------------------------------------------
+    Plot number of hits and layers using hits from candidate clusters
+    '''
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.2, bottom=0.12, left=0.08, top=0.97, right=0.97)
+
+    hbins = [b+0.5 for b in range(1,  10)]
+    lbins = [b+0.5 for b in range(1,   7)]
+
+    ax[0].hist(rmHits, log=options.logy, bins=hbins, label=r'Pure $\mu$')
+    ax[0].hist(nmHits, log=options.logy, bins=hbins, label=r'Noise $\mu$')
+
+    ax[1].hist(rmLayers, log=options.logy, bins=lbins, label=r'Pure $\mu$')
+    ax[1].hist(nmLayers, log=options.logy, bins=lbins, label=r'Noise $\mu$')
+
+    ax[0].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[0].set_xlabel('Number of reconstructed hits', fontsize=14)
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    ax[1].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[1].set_xlabel('Number of layers with reconstructed hits', fontsize=14)
+    ax[1].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    fig.show()
+
+    waitForClick('candidates_quality_hits')
+
+    '''--------------------------------------------
+    Plot number of hits and layers using hits from candidate clusters
+    '''
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.2, bottom=0.12, left=0.08, top=0.97, right=0.97)
+
+    ax[0].hist(rmPredHits, log=options.logy, bins=hbins, label=r'Pure $\mu$')
+    ax[0].hist(nmPredHits, log=options.logy, bins=hbins, label=r'Noise $\mu$')
+
+    ax[1].hist(rmPredLayers, log=options.logy, bins=lbins, label=r'Pure $\mu$')
+    ax[1].hist(nmPredLayers, log=options.logy, bins=lbins, label=r'Noise $\mu$')
+
+    ax[0].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[0].set_xlabel('Number of hits near predicted trajectory', fontsize=14)
+
+    ax[1].set_ylabel('Number of muon candidates', fontsize=14)
+    ax[1].set_xlabel('Number of layers with hits near predicted trajectory', fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax[1].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    fig.show()
+
+    waitForClick('candidates_quality_pred_hits')    
+
+    '''--------------------------------------------
+    Plot 1d differences between true and predicted trajectories
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.17, bottom=0.12, left=0.05, top=0.97, right=0.97)
+
+    dbins1 = [0.002*b for b in range(-50, 50)]
+    dbins2 = [0.002*b for b in range(-50, 50)]
+    dbins3 = [0.005*b for b in range(-50, 50)]
+
+    colorReal = 'royalblue'
+    colorNearby = 'yellowgreen'
+    colorNoise = 'tab:orange'
+
+    ax[0].hist(nmDiff1, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
+    ax[1].hist(nmDiff2, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
+    ax[2].hist(nmDiff3, log=options.logy, bins=dbins3, label=r'noise $\mu$', color=colorNoise)
+
+    ax[0].hist(rmDiff1, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
+    ax[1].hist(rmDiff2, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
+    ax[2].hist(rmDiff3, log=options.logy, bins=dbins3, label=r'real $\mu$', color=colorReal, histtype='step')
+
+    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+
+    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
+    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
+    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    waitForClick('candidates_quality_diffs_1d')
+
+    '''--------------------------------------------
+    Plot 2d differences between true and predicted trajectories
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.22, bottom=0.12, left=0.065, top=0.97, right=0.97)
+
+    dbins3 = [0.005*b for b in range(-50, 50)]
+
+    ax[0].scatter(rmPt, rmDiff1,  label=r'real $\mu$', color=colorReal, marker='.')
+    ax[1].scatter(rmPt, rmDiff2,  label=r'real $\mu$', color=colorReal, marker='.')
+    ax[2].scatter(rmPt, rmDiff3,  label=r'real $\mu$', color=colorReal, marker='.')
+
+    ax[0].scatter(nmPt, nmDiff1,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
+    ax[1].scatter(nmPt, nmDiff2,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
+    ax[2].scatter(nmPt, nmDiff3,  label=r'noise $\mu$', color=colorNoise, marker='.', facecolors='none')
+
+    ax[0].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
+    ax[1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
+    ax[2].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14)
+
+    ax[0].set_ylabel(r'RPC1 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel(r'RPC2 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel(r'RPC3 $z_{\mathrm{sim.}} - z_{\mathrm{pred.}}$ [m]',  fontsize=14, labelpad=-4)
+
+    ax[0].set_ylim(-0.12, 0.12)
+    ax[1].set_ylim(-0.12, 0.12)
+    ax[2].set_ylim(-0.12, 0.12)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    waitForClick('candidates_quality_diffs_scatter')
+
+    '''--------------------------------------------
+    Plot 1d differences between all hits and predicted trajectory for noise muons
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.17, bottom=0.12, left=0.05, top=0.97, right=0.97)
+
+    dbins3 = [0.005*b for b in range(-50, 50)]
+ 
+    ax[0].hist(nmDiffHits[Origin.MUON][Layer.RPC1],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[0].hist(nmDiffHits[Origin.NEARBY][Layer.RPC1], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[0].hist(nmDiffHits[Origin.NOISE][Layer.RPC1],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[1].hist(nmDiffHits[Origin.MUON][Layer.RPC2],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[1].hist(nmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[1].hist(nmDiffHits[Origin.NOISE][Layer.RPC2],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[2].hist(nmDiffHits[Origin.MUON][Layer.RPC3],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[2].hist(nmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[2].hist(nmDiffHits[Origin.NOISE][Layer.RPC3],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+
+    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{noise}~\mu}$ [m]',  fontsize=14)
+    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{noise}~\mu}$ [m]',  fontsize=14)
+    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{noise}~\mu}$ [m]',  fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    waitForClick('candidates_quality_hitdiff_noisemu')
+
+    '''--------------------------------------------
+    Plot 1d differences between all hits and predicted trajectory for real muons
+    '''
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    plt.subplots_adjust(wspace=0.17, bottom=0.12, left=0.05, top=0.97, right=0.97)
+
+    dbins3 = [0.005*b for b in range(-50, 50)]
+ 
+    ax[0].hist(rmDiffHits[Origin.MUON][Layer.RPC1],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[0].hist(rmDiffHits[Origin.NEARBY][Layer.RPC1], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[0].hist(rmDiffHits[Origin.NOISE][Layer.RPC1],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[1].hist(rmDiffHits[Origin.MUON][Layer.RPC2],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[1].hist(rmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[1].hist(rmDiffHits[Origin.NOISE][Layer.RPC2],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[2].hist(rmDiffHits[Origin.MUON][Layer.RPC3],   log=options.logy, bins=dbins3, label=r'$\mu$ direct hits',  color=colorReal,   histtype='step')
+    ax[2].hist(rmDiffHits[Origin.NEARBY][Layer.RPC2], log=options.logy, bins=dbins3, label=r'$\mu$ cluster hits', color=colorNearby, histtype='step')
+    ax[2].hist(rmDiffHits[Origin.NOISE][Layer.RPC3],  log=options.logy, bins=dbins3, label=r'noise hits',         color=colorNoise,  histtype='step')
+
+    ax[0].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[1].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+    ax[2].set_ylabel('candidates',  fontsize=14, labelpad=-4)
+
+    ax[0].set_xlabel(r'RPC1 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{real}~\mu}$ [m]',  fontsize=14)
+    ax[1].set_xlabel(r'RPC2 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{real}~\mu}$ [m]',  fontsize=14)
+    ax[2].set_xlabel(r'RPC3 $z_{\mathrm{hit}} - z_{\mathrm{pred.}}^{\mathrm{real}~\mu}$ [m]',  fontsize=14)
+
+    ax[0].legend(loc='best', prop={'size': 12}, frameon=False)
+
+    waitForClick('candidates_quality_hitdiff_realmu')    
 
 #----------------------------------------------------------------------------------------------
 def makeCandidates(event):
@@ -1591,18 +2145,22 @@ def drawEvent(event, candEvent=None):
 
         ax.scatter([hit.getZ()], [hit.getY()+hoff], color=color, marker=marker, label=label, s=size)
 
-    ax.plot(zarr, yarr, label=r'Muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign), color='royalblue', linewidth=2)
-
-    if options.debug:
-        ax.plot(zlin, ylin, label='Line')
+    ax.plot(zarr, yarr, color='red', linewidth=1, label=r'Sim. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign))
 
     ax.set_xlabel('Beam axis z [m]',  fontsize=labelSize)
     ax.set_ylabel('Radial y [m]',  fontsize=labelSize)
 
-    if candEvent:
-        zseed, yseed = candEvent.makeSeedLine()
+    if candEvent and getattr(candEvent, 'predTrajectory', None):
+        ax.plot(zlin, ylin, linewidth=1, linestyle='--', color='red', label='Sim. muon direction')
 
-        ax.plot(zseed, yseed, linewidth=1, linestyle='--', color='green', label='RPC2 seed cluster line')
+        zseed, yseed = candEvent.makeSeedLine()
+        ax.plot(zseed, yseed, linewidth=1, linestyle=':', color='c', label='RPC2 seed cluster line')
+
+        zpred, ypred = candEvent.makePredLine()
+        ax.plot(zpred, ypred, linewidth=1, linestyle='-', color='green', label=r'Pred. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(candEvent.predPt*candEvent.predSign))
+
+        zrpc1, yrpc1 = candEvent.makeRPC1Line()
+        ax.plot(zrpc1, yrpc1, linewidth=1, linestyle='-.', color='green', label='RPC1 cluster line')
 
     plt.xlim(minz, maxz)
     plt.ylim(miny, maxy)
@@ -1611,7 +2169,7 @@ def drawEvent(event, candEvent=None):
 
     fig.show()
 
-    waitForClick(eventName)
+    waitForClick(eventName, saveAll=False)
 
 #----------------------------------------------------------------------------------------------
 def prepEvents():
@@ -1627,7 +2185,7 @@ def prepEvents():
         with open(options.in_pickle, 'rb') as f:
             events = pickle.load(f)
 
-        log.info('prepEvents - read {} pickled events in {:.1}s'.format(len(events), time.time() - startTime))
+        log.info('prepEvents - read {} pickled events in {:4.1}s'.format(len(events), time.time() - startTime))
     else:
         #
         # Simulate events
@@ -1662,22 +2220,57 @@ def prepEvents():
     else:
         net = None
 
+    if options.nevent and len(events) > options.nevent:
+        events = events[:options.nevent]
+
     for event in events:
         if net:
             for cand in event.candEvents:
+                ''' Compute predicted candidate muon pT and charge using previously trained NN 
+                '''
                 data = np.array([cand.getCandVars()[0:3]], np.float32)
                 dataTr = torch.from_numpy(data)
                 pred = net(dataTr).detach().numpy()
 
                 cand.setModelPred(pred[0][0])
 
-                log.debug('Muon pT = {}, predicted pT = {}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
+                '''Use predicted pT and charge, and the angle of the line passing through RPC1 cluster
+                '''
+                angleRPC1 = 180*math.atan(cand.rpc1Cluster.getY()/cand.rpc1Cluster.getMeanZ())/math.pi
 
-                if options.show_net:
-                    log.info('TODO - implement code to visualize neural network')
+                cand.predTrajectory = Trajectory(cand.getPredPt(), angleRPC1, cand.getPredSign())
 
-            if options.draw:
-                drawEvent(event, cand)
+                if options.debug:
+                    log.info('-------------------------------------------------------------------')
+                    log.info('Muon true q*pT = {:.1f}, predicted q*pT = {:.1f}'.format(cand.muonPt*cand.muonSign, cand.getPredQPt()))
+
+
+                    ''' Solved for predicted muon trajectory passing through seed cl
+                    '''
+                    predPath = PredPath(cand.seedCluster.getMeanZ(), cand.seedCluster.getY(), cand.getPredQPt())
+                    log.info(predPath)
+
+                    initAngle = math.atan(cand.seedCluster.getY()/cand.seedCluster.getMeanZ())
+
+                    initTrajectory = Trajectory(cand.getPredPt(), initAngle, cand.getPredSign())
+
+                    initValues = (cand.seedCluster.getMeanZ(), initTrajectory.z0, initTrajectory.y0)
+
+                    result = predPath.solveTrajectory(initValues)
+
+                    cand.predPath = predPath
+
+                    log.info('Muon true zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(event.path.getZatY(options.rpc_radius), event.path.z0, event.path.y0))
+                    log.info('Initial   zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(initValues[0], initValues[1], initValues[2]))
+                    log.info('Solution  zr = {:.4f}, z0 = {:.4f}, y0 = {:.4f}'.format(result.x[0],   result.x[1],   result.x[2]))
+                    log.info('Muon angle true = {:.4f}, predicted = {:.4f}'.format(event.muonAngle, predPath.getPredAngle()))
+
+                    log.info(dir(result))
+                    log.info(result)
+
+
+        if options.draw and (options.draw_max_pt == None or event.muonPt < options.draw_max_pt):
+            drawEvent(event, cand)
 
     log.info('prepEvents - processed {} events in {:.1f}s'.format(len(events), time.time() - startTime))
 
@@ -1722,7 +2315,6 @@ def writeCandEvents(events):
             f.write('Options: {}\n\n'.format(str(options)))
             f.write('Arguments: {}\n'.format(args))
 
-
 #----------------------------------------------------------------------------------------------
 def main():
 
@@ -1738,6 +2330,11 @@ def main():
     writeCandEvents(events)
 
     if options.plot:
+        #plotEfficiency(events)
+
+        plotQualityCand(events)
+        return
+
         plotModelResults(events)
 
         plotCandEvents(events)
