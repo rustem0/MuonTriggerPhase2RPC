@@ -1001,11 +1001,14 @@ def reconstructClusters(event):
     event.superClusters  = superDict
 
 #----------------------------------------------------------------------------------------------
-def waitForClick(figname=None, saveAll=True):
+def waitForClick(figname=None, saveAll=True, figure=None):
 
     log.info('Click on figure to continue, close to exit programme...')
 
     saveFig = saveAll
+
+    if figure:
+        figure.show()
 
     while options.wait and True:
         try:
@@ -1247,12 +1250,13 @@ def plotModelResults(events):
 
     limPt = 30.0
     limdp = 0.7
+    labelSize = 16
 
     '''--------------------------------------------
     Plot predicted q*pT versus simulated q*pT
     '''
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    plt.subplots_adjust(bottom=0.08, left=0.08, top=0.98, right=0.98)
+    fig, ax = plt.subplots(1, 1, figsize=(10.1, 10))
+    plt.subplots_adjust(bottom=0.08, left=0.09, top=0.98, right=0.98)
 
     ax.scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
     ax.scatter(amNoise, apNoise, s=1, label=r'Noise $\mu$', c=noiseColor)
@@ -1260,62 +1264,83 @@ def plotModelResults(events):
     ax.set_xlim(-limPt, limPt)
     ax.set_ylim(-limPt, limPt)
 
-    ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
-    ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=14, labelpad=labelPad)
+    ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=labelSize, labelpad=labelPad)
 
-    fig.show()
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+
     waitForClick('results_pred_qpt_vs_sim')
 
     '''--------------------------------------------
     Plot predicted q/pT versus simulated q/pT
     '''
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    plt.subplots_adjust(bottom=0.08, left=0.08, top=0.98, right=0.98)
+    fig, ax = plt.subplots(1, 1, figsize=(10.2, 10))
+    plt.subplots_adjust(bottom=0.08, left=0.10, top=0.98, right=0.98)
 
     ax.scatter(realMuonQoverPt,  realPredQoverPt,  s=1, label=r'Pure $\mu$', c=muonColor)
     ax.scatter(noiseMuonQoverPt, noisePredQoverPt, s=1, label=r'Noise $\mu$', c=noiseColor)
 
-    ax.set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=14, labelpad=labelPad)
-    ax.set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=14, labelpad=labelPad)
-    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=labelSize, labelpad=labelPad)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
 
     ax.set_ylim(-0.33, 0.33)
     ax.set_ylim(-0.33, 0.33)
 
-    fig.show()
     waitForClick('results_pred_qoverpt_vs_sim')
 
     '''--------------------------------------------
     Plot predicted q/pT resolution versus simulated q/pT
     '''
+    labelPad = 1
+
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.97, right=0.97)
     
     ax.scatter(np.abs(amReal),  dpReal,  s=1, c=muonColor)
     ax.scatter(np.abs(amNoise), dpNoise, s=1, c=noiseColor)
 
     ax.set_ylim(-limdp, limdp)
 
-    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
-    ax.set_ylabel(r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=14, labelpad=labelPad)
+    xlabel = r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]'
+    ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
 
-    fig.show()
+    ax.set_xlabel(xlabel, fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(ylabel, fontsize=labelSize, labelpad=labelPad)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+
     waitForClick('results_pred_resol_vs_sim')
 
     '''--------------------------------------------
     Plot predicted q/pT resolution versus simulated q/pT
     '''
+    labelPad = 1
+
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.97, right=0.97)
 
     ax.hist(dpReal,  bins=dbins, log=options.logy, label=r'Pure $\mu$', color=muonColor)
     ax.hist(dpNoise, bins=dbins, log=options.logy, label=r'Noise $\mu$', color=noiseColor)
 
-    ax.set_ylabel('Muon candidates',  fontsize=14, labelpad=6)
-    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14, labelpad=labelPad)
+    ax.set_ylabel('Muon candidates',  fontsize=labelSize, labelpad=7)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=labelPad)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
     ax.legend(loc='best', prop={'size': 12}, frameon=False)
 
-    fig.show()
     waitForClick('results_pred_1dresol')
 
 #----------------------------------------------------------------------------------------------
