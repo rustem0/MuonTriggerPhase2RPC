@@ -65,6 +65,7 @@ p.add_option('-d', '--debug',     action = 'store_true', default = False, help='
 p.add_option('-v', '--verbose',   action = 'store_true', default = False, help='print debug info')
 p.add_option('--draw',            action = 'store_true', default = False, help='draw event display')
 p.add_option('--draw-line',       action = 'store_true', default = False, help='draw muon direction line')
+p.add_option('--draw-no-pred',    action = 'store_true', default = False, help='do not draw predicted muon path')
 p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
 p.add_option('-w', '--wait',      action = 'store_true', default = False, help='wait for click on figures to continue')
 
@@ -78,6 +79,7 @@ p.add_option('--outdir', '-o',    type='string',  default = None, help = 'output
 p.add_option('--in-pickle',       type='string',  default = None, help = 'input path for pickle output file')
 p.add_option('--torch-model',     type='string',  default = None, help = 'input path for torch model')
 p.add_option('--plot-dir',        type='string',  default = None, help = 'output directory for plots')
+p.add_option('--plot-func',       type='string',  default = None, help = 'plot selected function')
 
 (options, args) = p.parse_args()
 
@@ -1228,9 +1230,6 @@ def plotModelResults(events):
                 realMuonQoverPt += [cand.getMuonQoverPt()]
                 realPredQoverPt += [cand.getPredQoverPt()]
 
-    fig, ax = plt.subplots(2, 2, figsize=(12, 12))
-    plt.subplots_adjust(wspace=0.2, hspace=0.30, bottom=0.08, left=0.08, top=0.97, right=0.97)
-
     amReal = np.array(realMuonQPt)
     apReal = np.array(realPredQPt)
 
@@ -1246,47 +1245,78 @@ def plotModelResults(events):
     noiseColor = 'yellowgreen'
     labelPad = -1
 
-    ax[0, 0].scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
-    ax[0, 0].scatter(amNoise, apNoise, s=1, label=r'Noise $\mu$', c=noiseColor)
-
-    ax[1, 0].scatter(realMuonQoverPt,  realPredQoverPt,  s=1, label=r'Pure $\mu$', c=muonColor)
-    ax[1, 0].scatter(noiseMuonQoverPt, noisePredQoverPt, s=1, label=r'Noise $\mu$', c=noiseColor)
-
-    ax[0, 1].scatter(np.abs(amReal),  dpReal,  s=1, c=muonColor)
-    ax[0, 1].scatter(np.abs(amNoise), dpNoise, s=1, c=noiseColor)
-
-    ax[1, 1].hist(dpReal,  bins=dbins, log=options.logy, label=r'Pure $\mu$', color=muonColor)
-    ax[1, 1].hist(dpNoise, bins=dbins, log=options.logy, label=r'Noise $\mu$', color=noiseColor)
-
-    ax[0, 0].set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
-    ax[0, 0].set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=14, labelpad=labelPad)
-
-    ax[0, 1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
-    ax[0, 1].set_ylabel(r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=14, labelpad=labelPad)
-
-    ax[1, 0].set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=14, labelpad=labelPad)
-    ax[1, 0].set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=14, labelpad=labelPad)
-    ax[1, 0].legend(loc='best', prop={'size': 12}, frameon=False)
-
-    ax[1, 1].set_ylabel('Muon candidates',  fontsize=14, labelpad=labelPad)
-    ax[1, 1].set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14, labelpad=labelPad)
-    ax[1, 1].legend(loc='best', prop={'size': 12}, frameon=False)
-
-
     limPt = 30.0
     limdp = 0.7
 
-    ax[0, 0].set_xlim(-limPt, limPt)
-    ax[0, 0].set_ylim(-limPt, limPt)
+    '''--------------------------------------------
+    Plot predicted q*pT versus simulated q*pT
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    plt.subplots_adjust(bottom=0.08, left=0.08, top=0.98, right=0.98)
 
-    ax[1, 0].set_ylim(-0.33, 0.33)
-    ax[1, 0].set_ylim(-0.33, 0.33)
+    ax.scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
+    ax.scatter(amNoise, apNoise, s=1, label=r'Noise $\mu$', c=noiseColor)
 
-    ax[0, 1].set_ylim(-limdp, limdp)
+    ax.set_xlim(-limPt, limPt)
+    ax.set_ylim(-limPt, limPt)
+
+    ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
+    ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=14, labelpad=labelPad)
 
     fig.show()
+    waitForClick('results_pred_qpt_vs_sim')
 
-    waitForClick('results')
+    '''--------------------------------------------
+    Plot predicted q/pT versus simulated q/pT
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    plt.subplots_adjust(bottom=0.08, left=0.08, top=0.98, right=0.98)
+
+    ax.scatter(realMuonQoverPt,  realPredQoverPt,  s=1, label=r'Pure $\mu$', c=muonColor)
+    ax.scatter(noiseMuonQoverPt, noisePredQoverPt, s=1, label=r'Noise $\mu$', c=noiseColor)
+
+    ax.set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=14, labelpad=labelPad)
+    ax.set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=14, labelpad=labelPad)
+    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+
+    ax.set_ylim(-0.33, 0.33)
+    ax.set_ylim(-0.33, 0.33)
+
+    fig.show()
+    waitForClick('results_pred_qoverpt_vs_sim')
+
+    '''--------------------------------------------
+    Plot predicted q/pT resolution versus simulated q/pT
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
+    
+    ax.scatter(np.abs(amReal),  dpReal,  s=1, c=muonColor)
+    ax.scatter(np.abs(amNoise), dpNoise, s=1, c=noiseColor)
+
+    ax.set_ylim(-limdp, limdp)
+
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=14, labelpad=labelPad)
+    ax.set_ylabel(r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=14, labelpad=labelPad)
+
+    fig.show()
+    waitForClick('results_pred_resol_vs_sim')
+
+    '''--------------------------------------------
+    Plot predicted q/pT resolution versus simulated q/pT
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
+
+    ax.hist(dpReal,  bins=dbins, log=options.logy, label=r'Pure $\mu$', color=muonColor)
+    ax.hist(dpNoise, bins=dbins, log=options.logy, label=r'Noise $\mu$', color=noiseColor)
+
+    ax.set_ylabel('Muon candidates',  fontsize=14, labelpad=6)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14, labelpad=labelPad)
+    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+
+    fig.show()
+    waitForClick('results_pred_1dresol')
 
 #----------------------------------------------------------------------------------------------
 def prepEffPlot(denMuonQPt, numDictPt, plot=False, scaleToATLAS=True):
@@ -1395,7 +1425,7 @@ def plotEfficiency(events):
     if options.torch_model == None:
         return
 
-    log.info('plotModelResults - plot NN model results for {:d} simulated events'.format(len(events)))
+    log.info('plotEfficiency - plot NN efficiency using {:d} simulated events'.format(len(events)))
 
     muonQPt = []
     predQPt = []
@@ -2043,6 +2073,7 @@ def drawEvent(event, candEvent=None):
     maxy = 10.1
     yoff = 0.011
     labelSize = 15
+    titleSize = 20
 
     zatminy = min([event.path.getZatY(miny), event.path.getLinearZatY(miny)])
     zatmaxy = max([event.path.getZatY(maxy), event.path.getLinearZatY(maxy)])
@@ -2077,10 +2108,10 @@ def drawEvent(event, candEvent=None):
     # Draw RPC layers
     #
     fig, ax = plt.subplots(figsize=(15, 11))
-    plt.subplots_adjust(hspace=0.0, bottom=0.06, left=0.06, top=0.97, right=0.99)
+    plt.subplots_adjust(hspace=0.0, bottom=0.06, left=0.07, top=0.97, right=0.99)
 
-    fig.canvas.set_window_title(eventName) 
-    ax.set_title('RPC toy simulation')
+    fig.canvas.set_window_title(eventName)
+    ax.set_title('RPC toy simulation', fontsize=labelSize)
 
     layerRPC12.plotLayer(ax, yoffset=+yoff)
     layerRPC11.plotLayer(ax, yoffset=-yoff, showStrips=True, stripOffset=0.01)
@@ -2121,7 +2152,7 @@ def drawEvent(event, candEvent=None):
         size = 40
 
         if Layer.isFirstDoubletLayer(hit.strip.layer):
-            marker = '^'
+            marker = 'v'
             hoff = 0
         else:
             hoff = yoff
@@ -2147,25 +2178,30 @@ def drawEvent(event, candEvent=None):
 
     ax.plot(zarr, yarr, color='red', linewidth=1, label=r'Sim. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign))
 
-    ax.set_xlabel('Beam axis z [m]',  fontsize=labelSize)
-    ax.set_ylabel('Radial y [m]',  fontsize=labelSize)
+    ax.set_xlabel('Beam axis z [m]', fontsize=titleSize, labelpad=3)
+    ax.set_ylabel('Radial y [m]',    fontsize=titleSize, labelpad=3)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
 
     if candEvent and getattr(candEvent, 'predTrajectory', None):
         ax.plot(zlin, ylin, linewidth=1, linestyle='--', color='red', label='Sim. muon direction')
 
         zseed, yseed = candEvent.makeSeedLine()
-        ax.plot(zseed, yseed, linewidth=1, linestyle=':', color='c', label='RPC2 seed cluster line')
+        ax.plot(zseed, yseed, linewidth=1, linestyle=':', color='m', label='RPC2 seed cluster line')
 
-        zpred, ypred = candEvent.makePredLine()
-        ax.plot(zpred, ypred, linewidth=1, linestyle='-', color='green', label=r'Pred. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(candEvent.predPt*candEvent.predSign))
+        if not options.draw_no_pred:
+            zpred, ypred = candEvent.makePredLine()
+            ax.plot(zpred, ypred, linewidth=1, linestyle='-', color='green', label=r'Pred. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(candEvent.predPt*candEvent.predSign))
 
-        zrpc1, yrpc1 = candEvent.makeRPC1Line()
-        ax.plot(zrpc1, yrpc1, linewidth=1, linestyle='-.', color='green', label='RPC1 cluster line')
+            zrpc1, yrpc1 = candEvent.makeRPC1Line()
+            ax.plot(zrpc1, yrpc1, linewidth=1, linestyle='-.', color='green', label='RPC1 cluster line')
 
     plt.xlim(minz, maxz)
     plt.ylim(miny, maxy)
 
-    plt.legend(loc='center right', prop={'size': 14}, frameon=False)
+    plt.legend(loc='center right', prop={'size': titleSize}, frameon=False, fontsize=labelSize)
 
     fig.show()
 
@@ -2329,21 +2365,18 @@ def main():
 
     writeCandEvents(events)
 
-    if options.plot:
-        #plotEfficiency(events)
+    funcs = ['plotEfficiency',
+             'plotQualityCand',
+             'plotModelResults',
+             'plotCandEvents',
+             'plotLineDifferences',
+             'plotSimulatedHits',
+             'plotRecoClusters',
+            ]    
 
-        plotQualityCand(events)
-        return
-
-        plotModelResults(events)
-
-        plotCandEvents(events)
-
-        plotLineDifferences(events)
-
-        plotSimulatedHits(events)
-
-        plotRecoClusters(events)
+    for func in funcs:
+        if options.plot or func == options.plot_func:
+            globals()[func](events)
 
     log.info('All done')
 
