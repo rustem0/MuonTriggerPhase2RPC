@@ -66,6 +66,7 @@ p.add_option('-v', '--verbose',   action = 'store_true', default = False, help='
 p.add_option('--draw',            action = 'store_true', default = False, help='draw event display')
 p.add_option('--draw-line',       action = 'store_true', default = False, help='draw muon direction line')
 p.add_option('--draw-no-pred',    action = 'store_true', default = False, help='do not draw predicted muon path')
+p.add_option('--plot-no-qual',    action = 'store_true', default = False, help='do not draw predicted muon path')
 p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
 p.add_option('-w', '--wait',      action = 'store_true', default = False, help='wait for click on figures to continue')
 
@@ -1339,7 +1340,7 @@ def plotModelResults(events):
     ax.tick_params(axis='x', labelsize=labelSize)
     ax.tick_params(axis='y', labelsize=labelSize)
 
-    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
 
     waitForClick('results_pred_1dresol')
 
@@ -1494,6 +1495,7 @@ def plotEfficiency(events):
     atlasColor = 'tab:orange'
 
     limPt = 30.0
+    labelSize = 17
 
     effRealBins, effReal, scaleReal = prepEffPlot(muonQPt, passRealQPt)
     effCandBins, effCand, scaleCand = prepEffPlot(muonQPt, passCandQPt)
@@ -1510,21 +1512,29 @@ def plotEfficiency(events):
     Plot efficiency 
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
 
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor)
     ax.plot(effRealBins, effReal, label=r'Pure $\mu$',  color=muonColor)
     ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
-    ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$',  color=bestColor)
-    ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$',  color=goodColor)
-    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor)
 
-    ax.set_ylabel('Efficiency [%]',  fontsize=14)
-    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
-    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    if not options.plot_no_qual:
+        ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor)
+        ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor)
+
+    ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=2)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=2)
+
+    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+
     ax.xaxis.grid(True)
     ax.yaxis.grid(True)
+
     ax.set_xlim(3.0, limPt)
     ax.set_ylim(0.0, 105.0)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
 
     waitForClick('efficiency')
 
@@ -1532,28 +1542,34 @@ def plotEfficiency(events):
     Plot efficiency scaled to 70% plateau
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
 
     effRealScaled = [x*scaleReal for x in effReal]
     effCandScaled = [x*scaleCand for x in effCand]
     effBestScaled = [x*scaleBest for x in effBest]
     effGoodScaled = [x*scaleGood for x in effGood]
 
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
     ax.plot(effRealBins, effRealScaled, label=r'Pure $\mu \times {:.3f}$' .format(scaleReal), color=muonColor)
     ax.plot(effCandBins, effCandScaled, label=r'Incl. $\mu \times {:.3f}$'.format(scaleCand), color=noiseColor)
-    ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 for incl. $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
-    ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 for incl. $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
-    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
 
-    ax.set_ylabel('Efficiency [%]',  fontsize=14)
-    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
-    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    if not options.plot_no_qual:
+        ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 for incl. $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
+        ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 for incl. $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
+
+    ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=4)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=2)
+
+    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+
     ax.xaxis.grid(True)
     ax.yaxis.grid(True)
+
     ax.set_xlim(3.0, limPt)
     ax.set_ylim(0.0, 80.0)
 
-    fig.show()
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
 
     waitForClick('efficiency_scaled')
 
@@ -1561,22 +1577,29 @@ def plotEfficiency(events):
     Plot zoomed y-axis efficiency plots
     '''
     fig, ax = plt.subplots(figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.09, left=0.08, top=0.97, right=0.97)
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
 
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
     ax.plot(effRealBins, effReal, label=r'Pure $\mu$', color=muonColor)
     ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
-    ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor)
-    ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor)
-    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
 
-    ax.set_ylabel('Efficiency [%]',  fontsize=14)
-    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=14)
-    ax.legend(loc='best', prop={'size': 12}, frameon=False)
+    if not options.plot_no_qual:
+        ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor)
+        ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor)
+
+    ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=2)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=2)
+
+    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+
     ax.xaxis.grid(True)
     ax.yaxis.grid(True)
 
     plt.xlim(3.0, 15.0)
     plt.ylim(0.0, 15.0)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
 
     waitForClick('efficiency_zoom')
 
