@@ -1631,9 +1631,6 @@ def plotLineDifferences(events):
 
             #log.info('Angle group={}, muon={}'.format(angleGroup, event.printSimEvent()))
 
-    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
-    plt.subplots_adjust(hspace=0.28, bottom=0.08, left=0.10, top=0.97, right=0.97)
-
     labelDict = {1:r'$85^{\circ} < \angle_{\mathrm{sim.}~\mu} < 70^{\circ}$',
                  2:r'$70^{\circ} < \angle_{\mathrm{sim.}~\mu} < 50^{\circ}$',
                  3:r'$50^{\circ} < \angle_{\mathrm{sim.}~\mu} < 40^{\circ}$',
@@ -1642,37 +1639,88 @@ def plotLineDifferences(events):
                  300:r'$50 ^{\circ}< \angle_{\mathrm{sim.}~\mu} < 40^{\circ}$',
                 }
 
+    labelSize = 16
+    legendSize = 16
+
+    '''--------------------------------------------
+    Plot differences for RPC1 layer for real muons
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.13, top=0.98, right=0.98)                
+
     for i in [1, 2, 3]:
-        log.info('Angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
+        log.info('RPC1 angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
+        ax.scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10, label=labelDict[i])
 
-        ax[0, 0].scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10, label=labelDict[i])
-        ax[0, 1].scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10, label=labelDict[i])
+    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_ylabel(r'Pure muon RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
 
-    ax[0, 0].set_xlabel(r'Pure muon $q\times p_{\mathrm{T}}$', fontsize=14)
-    ax[0, 0].set_ylabel('RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
-    ax[0, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
 
-    ax[0, 1].set_xlabel(r'Pure muon $q\times p_{\mathrm{T}}$', fontsize=14)
-    ax[0, 1].set_ylabel('RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
-    ax[0, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('differences_2d_realmu_RPC1')
+
+    '''--------------------------------------------
+    Plot differences for RPC1 layer for real muons
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.13, top=0.98, right=0.98)                
+
+    for i in [1, 2, 3]:
+        log.info('RPC3 angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
+        ax.scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10, label=labelDict[i])
+
+    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_ylabel(r'Pure muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
+
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('differences_2d_realmu_RPC3')
+
+    '''--------------------------------------------
+    Plot differences for RPC1 layer for noise muons
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.13, top=0.98, right=0.98)                
 
     for i in [100, 200, 300]:
         log.info('Angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
+        ax.scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10)
 
-        ax[1, 0].scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10)
-        ax[1, 1].scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10)
+    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_ylabel(r'Noise muon RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
 
-    ax[1, 0].set_xlabel(r'Muon with noise $q\times p_{\mathrm{T}}$', fontsize=14)
-    ax[1, 0].set_ylabel('RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
-    ax[1, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
 
-    ax[1, 1].set_xlabel(r'Muon with noise $q\times p_{\mathrm{T}}$', fontsize=14)
-    ax[1, 1].set_ylabel('RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
-    ax[1, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
 
-    fig.show()
+    waitForClick('differences_2d_noisemu_RPC1')
 
-    waitForClick('differences')
+    '''--------------------------------------------
+    Plot differences for RPC1 layer for noise muons
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.13, top=0.98, right=0.98)                
+
+    for i in [100, 200, 300]:
+        log.info('Angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
+        ax.scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10)
+
+    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_ylabel(r'Noise muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
+
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('differences_2d_noisemu_RPC3')
 
 #----------------------------------------------------------------------------------------------
 def plotCandEvents(events):
