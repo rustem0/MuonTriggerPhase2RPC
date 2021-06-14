@@ -54,7 +54,6 @@ p.add_option('--rpc1-max-deltaz',    type='float', default = 0.15,  help = 'Maxi
 p.add_option('--rpc3-max-deltaz',    type='float', default = 0.60,  help = 'Maximum RPC3 delta z for making candidates')
 p.add_option('--draw-max-pt',        type='float', default = 30.0,  help = 'maximum muon pT for drawing event displays')
 
-
 p.add_option('--input-dim',             type='int',   default= 3)
 p.add_option('--output-dim',            type='int',   default= 1)
 p.add_option('--fc1',                   type='int',   default=20)
@@ -72,7 +71,6 @@ p.add_option('-w', '--wait',      action = 'store_true', default = False, help='
 
 p.add_option('--logy',            action = 'store_true', default = False, help='draw histograms with log Y')
 p.add_option('--veto-noise-cand', action = 'store_true', default = False, help='veto candidates containing noise hits')
-p.add_option('--do-pdf',          action = 'store_true', default = False, help='save figures as PDF')
 p.add_option('--has-rpc2-noise',  action = 'store_true', default = False, help='require noise hits in RPC2 later for event display')
 p.add_option('--no-out',          action = 'store_true', default = False, help='do not create default output directory and do not write output')
 
@@ -154,25 +152,23 @@ def getOutPath(filename=None):
     return outdir
 
 #----------------------------------------------------------------------------------------------
-def getPlotPath(plotName=None, doPDF=options.do_pdf):
+def getPlotPath(plotName=None):
 
     if options.plot_dir:
         return options.plot_dir
 
     if options.in_pickle and options.torch_model:
-        pdir = '{}/plot-model-{}/'.format(os.path.dirname(options.in_pickle), os.path.dirname(options.torch_model).replace('/', ''))
+        pdir = '{}/plot-model-{}'.format(os.path.dirname(options.in_pickle), os.path.dirname(options.torch_model).replace('/', ''))
+
+        if options.logy:
+            pdir += '-logy'
 
         if not os.path.isdir(pdir):
             log.info('getPlotPath - make new directory for plots: {}'.format(pdir))
-            os.makedirs(pdir)
+            os.makedirs(pdir)            
 
         if plotName:
-            plotPath = '{}{}'.format(pdir, plotName)
-
-            if doPDF:
-                plotPath = plotPath.replace('.png', '.pdf')
-
-            return plotPath
+            pdir = '{}/{}'.format(pdir, plotName)
 
         return pdir
 
@@ -1762,43 +1758,90 @@ def plotCandEvents(events):
                     deltaz1Neg += [cand.rpc1DeltaZ]
                     deltaz3Neg += [cand.rpc3DeltaZ]
 
-    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
-    plt.subplots_adjust(hspace=0.28, bottom=0.08, left=0.08, top=0.97, right=0.97)
-
     cbins  = [b+0.5   for b in range(-1,   4)]
     zbins1 = [b*0.004 for b in range(-50, 50)]
     zbins3 = [b*0.014 for b in range(-50, 50)]
     sbins  = [b*0.25  for b in range(  0, 40)]
 
-    ax[0, 0].hist(ncand, log=options.logy, bins=cbins, label=r'All $\mu$')
-    ax[0, 1].hist(seedz, log=options.logy, bins=sbins, label=r'All $\mu$')
+    labelSize = 16
+    legendSize = 16
 
-    ax[1, 0].hist(deltaz1Neg,   log=options.logy, bins=zbins1, color='blue', label=r'Pure $+\mu$')
-    ax[1, 0].hist(deltaz1Pos,   log=options.logy, bins=zbins1, color='red',  label=r'Pure $-\mu$')
-    ax[1, 0].hist(deltaz1Noise, log=options.logy, bins=zbins1, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2)
+    '''--------------------------------------------
+    Plot number of candidates
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.12, top=0.98, right=0.98)
 
-    ax[1, 1].hist(deltaz3Neg,   log=options.logy, bins=zbins3, color='blue', label=r'Pure $+\mu$')
-    ax[1, 1].hist(deltaz3Pos,   log=options.logy, bins=zbins3, color='red',  label=r'Pure $-\mu$')
-    ax[1, 1].hist(deltaz3Noise, log=options.logy, bins=zbins3, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2)
+    ax.hist(ncand, log=options.logy, bins=cbins, label=r'All $\mu$')
 
-    ax[0, 0].axvline(stat.mean(ncand), color='k', linestyle='dashed', linewidth=1)
-    ax[0, 1].axvline(stat.mean(seedz), color='k', linestyle='dashed', linewidth=1)
+    ax.set_xlabel('Number of muon candidates', fontsize=labelSize)
+    ax.set_ylabel('Number of simulated events', fontsize=labelSize)
 
-    ax[0, 0].set_xlabel('Number of muon candidates', fontsize=14)
-    ax[0, 0].set_ylabel('Number of simulated events', fontsize=14)
-    ax[0, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.axvline(stat.mean(ncand), color='k', linestyle='dashed', linewidth=1)
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
 
-    ax[0, 1].set_xlabel(r'RPC2 seed $z_{\mathrm{cluster}}$ [m]', fontsize=14)
-    ax[0, 1].set_ylabel('Muon candidates', fontsize=14)
-    ax[0, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
 
-    ax[1, 1].set_xlabel(r'RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
-    ax[1, 1].set_ylabel('Muon candidates', fontsize=14)
-    ax[1, 1].legend(loc='best', prop={'size': 12}, frameon=False)
+    waitForClick('candidates_ncand')
 
-    ax[1, 0].set_xlabel(r'RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=14)
-    ax[1, 0].set_ylabel('Muon candidates', fontsize=14)
-    ax[1, 0].legend(loc='best', prop={'size': 12}, frameon=False)
+    '''--------------------------------------------
+    Plot RPC2 cluster position
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+
+    ax.hist(seedz, log=options.logy, bins=sbins, label=r'All $\mu$')
+
+    ax.set_xlabel(r'RPC2 seed $z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
+    ax.set_ylabel('Muon candidates', fontsize=labelSize)
+
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
+    ax.axvline(stat.mean(seedz), color='k', linestyle='dashed', linewidth=1)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('candidates_zseed_RPC3')
+
+    '''--------------------------------------------
+    Plot RPC1 cluster differences
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+
+    ax.hist(deltaz1Neg,   log=options.logy, bins=zbins1, color='blue', label=r'Pure $+\mu$')
+    ax.hist(deltaz1Pos,   log=options.logy, bins=zbins1, color='red',  label=r'Pure $-\mu$')
+    ax.hist(deltaz1Noise, log=options.logy, bins=zbins1, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2)
+
+    ax.set_xlabel(r'RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
+    ax.set_ylabel('Muon candidates', fontsize=labelSize)
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('candidates_zdiffs_RPC1')
+
+    '''--------------------------------------------
+    Plot RPC1 cluster differences
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+
+    ax.hist(deltaz3Neg,   log=options.logy, bins=zbins3, color='blue', label=r'Pure $+\mu$')
+    ax.hist(deltaz3Pos,   log=options.logy, bins=zbins3, color='red',  label=r'Pure $-\mu$')
+    ax.hist(deltaz3Noise, log=options.logy, bins=zbins3, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2)
+
+    ax.set_xlabel(r'RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
+    ax.set_ylabel('Muon candidates', fontsize=labelSize)
+
+    ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('candidates_zdiffs_RPC3')
 
     log.info('Mean ncand:   {:.4f}'.format(stat.mean(ncand)))
     log.info('Mean seed z:  {:.4f}'.format(stat.mean(seedz)))
@@ -1808,10 +1851,6 @@ def plotCandEvents(events):
     log.info('Std seed z:  {:.4f}'.format(stat.stdev(seedz)))
     log.info('Std rpc1 dz: {:.4f}'.format(stat.stdev(deltaz1)))
     log.info('Std rpc3 dz: {:.4f}'.format(stat.stdev(deltaz3)))
-
-    fig.show()
-
-    waitForClick('candidates')
 
 #----------------------------------------------------------------------------------------------
 def plotQualityCand(events):
