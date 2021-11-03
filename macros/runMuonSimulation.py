@@ -23,6 +23,7 @@ import itertools
 import pickle
 import logging
 import collections
+import matplotlib
 
 import matplotlib.pyplot as plt
 import statistics as stat
@@ -30,7 +31,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from scipy.stats import kde
 from scipy.optimize import root
+
 from collections import defaultdict
 from enum import Enum
 from optparse import OptionParser
@@ -66,7 +69,7 @@ p.add_option('--draw',            action = 'store_true', default = False, help='
 p.add_option('--draw-line',       action = 'store_true', default = False, help='draw muon direction line')
 p.add_option('--draw-no-pred',    action = 'store_true', default = False, help='do not draw predicted muon path')
 p.add_option('--plot-no-qual',    action = 'store_true', default = False, help='do not draw predicted muon path')
-p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot histograms')
+p.add_option('-p', '--plot',      action = 'store_true', default = False, help='plot all histograms')
 p.add_option('-w', '--wait',      action = 'store_true', default = False, help='wait for click on figures to continue')
 
 p.add_option('--logy',            action = 'store_true', default = False, help='draw histograms with log Y')
@@ -79,6 +82,7 @@ p.add_option('--in-pickle',       type='string',  default = None, help = 'input 
 p.add_option('--torch-model',     type='string',  default = None, help = 'input path for torch model')
 p.add_option('--plot-dir',        type='string',  default = None, help = 'output directory for plots')
 p.add_option('--plot-func',       type='string',  default = None, help = 'plot selected function')
+p.add_option('--draw-opt',        type='string',  default = None, help = 'drawing options')
 
 (options, args) = p.parse_args()
 
@@ -1074,7 +1078,7 @@ def plotSimulatedHits(events):
     ax[0, 0].set_xlabel('Number of all hits')
     ax[0, 0].set_ylabel('Simulated events')
 
-    ax[0, 1].set_xlabel('Number of muon hits')
+    ax[0, 1].set_xlabel('Number of primary muon hits')
     ax[0, 1].set_ylabel('Simulated events')
 
     ax[1, 1].set_xlabel('Number of muon cluster hits')
@@ -1247,7 +1251,48 @@ def plotModelResults(events):
 
     limPt = 30.0
     limdp = 0.7
-    labelSize = 16
+    labelSize = 20
+
+    '''--------------------------------------------
+    Plot predicted q/pT versus simulated q/pT - 2d histogram
+    '''
+    fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
+    plt.subplots_adjust(bottom=0.08, left=0.10, top=0.98, right=0.99)
+    
+    x = amReal
+    y = apReal
+
+    # Evaluate a gaussian kde on a regular grid of nbins x nbins over data extents
+    nbins=150
+    log.info('Compute KDE kernel')
+
+    k = kde.gaussian_kde([x,y])
+
+    xi, yi = np.mgrid[-limPt:limPt:nbins*1j, -limPt:limPt:nbins*1j]
+
+    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+
+    cname = 'YlGn'
+    cmap = plt.get_cmap(cname)
+
+    levels = matplotlib.ticker.MaxNLocator(nbins=25).tick_values(zi.min(), zi.max())
+    norm = matplotlib.colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    zi = np.ma.masked_array(zi, zi < 10e-10)
+    
+    # Make the plot
+    im = ax.pcolormesh(xi, yi, zi.reshape(xi.shape), cmap=cmap, norm=norm, shading='auto')
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.15, pad=0.005)
+    cbar.ax.tick_params(labelsize=labelSize) 
+
+    ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=labelSize, labelpad=labelPad)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('results_pred_qoverpt_vs_sim_2dhist_'+cname)
 
     '''--------------------------------------------
     Plot predicted q*pT versus simulated q*pT
@@ -1272,7 +1317,7 @@ def plotModelResults(events):
     waitForClick('results_pred_qpt_vs_sim')
 
     '''--------------------------------------------
-    Plot predicted q/pT versus simulated q/pT
+    Plot predicted q/pT versus simulated q/pT - scatter plot
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10.2, 10))
     plt.subplots_adjust(bottom=0.08, left=0.10, top=0.98, right=0.98)
@@ -2216,7 +2261,7 @@ def drawEvent(event, candEvent=None):
     minz = max([0.0, min([zatmaxy, zatminy]) - 0.1])
     maxz = max([zatmaxy, zatminy]) + 0.1
 
-    eventName = 'event_{:05d}'.format(event.eventNumber)
+    eventName = 'event_{:05d}{:s}'.format(event.eventNumber, options.draw_opt)
 
     log.info('drawEvent - {} (miny, maxy) = ({:.2f}, {:.2f}), minz, maxz = ({:.2f}, {:.2f})'.format(eventName, miny, maxy, minz, maxz))
 
@@ -2297,21 +2342,22 @@ def drawEvent(event, candEvent=None):
         if hit.origin == Origin.MUON:
             color = 'red'
             if hitCounts[hit.origin] == 1:
-                label = 'Muon hit'
+                label = 'Primary muon hit'
         elif hit.origin == Origin.NEARBY:
-            color = 'blue'
+            color = 'orange'
+            marker = 's'
             if hitCounts[hit.origin] == 1:
                 label = 'Muon cluster hit'
         elif hit.origin == Origin.NOISE:
             marker = '.'
-            color = 'orange'
+            color = 'blue'
             size = 160
             if hitCounts[hit.origin] == 1:
                 label='Noise hit'
 
         ax.scatter([hit.getZ()], [hit.getY()+hoff], color=color, marker=marker, label=label, s=size)
 
-    ax.plot(zarr, yarr, color='red', linewidth=1, label=r'Sim. muon $q \times p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign))
+    ax.plot(zarr, yarr, color='red', linewidth=1, label=r'Sim. muon $q \cdot p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign))
 
     ax.set_xlabel('Beam axis z [m]', fontsize=titleSize, labelpad=3)
     ax.set_ylabel('Radial y [m]',    fontsize=titleSize, labelpad=3)
@@ -2321,10 +2367,13 @@ def drawEvent(event, candEvent=None):
 
 
     if candEvent and getattr(candEvent, 'predTrajectory', None):
-        ax.plot(zlin, ylin, linewidth=1, linestyle='--', color='red', label='Sim. muon direction')
 
-        zseed, yseed = candEvent.makeSeedLine()
-        ax.plot(zseed, yseed, linewidth=1, linestyle=':', color='m', label='RPC2 seed cluster line')
+        if options.draw_opt.count('no-sim-line') == 0:
+            ax.plot(zlin, ylin, linewidth=1, linestyle='--', color='red', label='Sim. muon direction')
+
+        if options.draw_opt.count('no-seed-line') == 0:
+            zseed, yseed = candEvent.makeSeedLine()
+            ax.plot(zseed, yseed, linewidth=1, linestyle=':', color='m', label='RPC2 seed cluster line')
 
         if not options.draw_no_pred:
             zpred, ypred = candEvent.makePredLine()
@@ -2383,11 +2432,15 @@ def prepEvents():
     # Load and evaluate torch model
     #
     if options.torch_model:
-        log.info('Load torch model from: {}'.format(options.torch_model))
+        if os.path.isfile(options.torch_model):
+            log.info('Load torch model from: {}'.format(options.torch_model))
 
-        net = Net()
-        net.load_state_dict(torch.load(options.torch_model))
-        net.eval()
+            net = Net()
+            net.load_state_dict(torch.load(options.torch_model))
+            net.eval()
+        else:
+            log.info('Torch model file does not exist: {}'.format(options.torch_model))
+
     else:
         net = None
 
