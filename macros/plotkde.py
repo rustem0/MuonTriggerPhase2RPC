@@ -43,7 +43,7 @@ def makeKDE2d(x, y, bandwidth, xbins=100j, ybins=100j, maskzero=True, kernel='to
     zz = np.reshape(z, xx.shape)
 
     if maskzero:
-        zz[zz == 0] = np.nan
+        zz[zz < 1e-6] = np.nan
 
     return xx, yy, zz
 
@@ -67,7 +67,7 @@ def plotKDE2d(xx, yy, zz, cname, xtitle, ytitle, labelSize=20, labelPad=-1):
     ax.tick_params(axis='y', labelsize=labelSize)
 
 #----------------------------------------------------------------------------------------------
-def getcmaps():
+def getclist(key=None):
 
     cmaps = {}
     
@@ -79,10 +79,22 @@ def getcmaps():
                 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
                 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
 
-    return cmaps
+    clist = []
+    
+    for x in cmaps.values():
+        clist += list(x)
+
+    matches = [x for x in clist if x == key]
+
+    if len(matches):
+        return matches
+
+    return clist
 
 #----------------------------------------------------------------------------------------------
 def main():
+    '''Make 2d density plot using kernel density smoothing'''
+
     m1 = np.random.normal(size=20000)
     m2 = np.random.normal(scale=0.5, size=20000)
 
@@ -90,12 +102,9 @@ def main():
 
     xx, yy, zz = makeKDE2d(x, y, 0.5)
                 
-    cmaps = getcmaps()
-
-    for clist in cmaps.values():
-        for cname in clist:
-            plotKDE2d(xx, yy, zz, cname, r'$x_{1}$', r'$y_{1}$', )
-            waitForClick()
+    for cname in getclist():
+        plotKDE2d(xx, yy, zz, cname, r'$x_{0}$', r'$y_{0}$', )
+        waitForClick()
 
 #----------------------------------------------------------------------------------------------
 main()

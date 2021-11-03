@@ -31,8 +31,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from scipy.stats import kde
 from scipy.optimize import root
+from sklearn.neighbors import KernelDensity
 
 from collections import defaultdict
 from enum import Enum
@@ -1199,6 +1199,84 @@ def getMU20Eff():
     return (cens, effs)
 
 #----------------------------------------------------------------------------------------------
+def makeKDE2d(x, y, bandwidth, xmin, xmax, ymin, ymax, xbins=100j, ybins=100j, maskzero=True, kernel='tophat', **kwargs): 
+    '''Build 2D kernel density estimate (KDE).'''
+
+    # create grid of sample locations (default: 100x100)
+    xx, yy = np.mgrid[xmin:xmax:xbins, 
+                      ymin:ymax:ybins]
+
+    xy_sample = np.vstack([yy.ravel(), xx.ravel()]).T
+    xy_train  = np.vstack([y, x]).T
+
+    kde_skl = KernelDensity(bandwidth=bandwidth, kernel=kernel, **kwargs)
+
+    kde_skl.fit(xy_train)
+
+    # score_samples() returns the log-likelihood of the samples
+    z = np.exp(kde_skl.score_samples(xy_sample))
+
+    zz = np.reshape(z, xx.shape)
+
+    if maskzero:
+        zz[zz < 1e-6] = np.nan
+
+    return xx, yy, zz
+
+#----------------------------------------------------------------------------------------------
+def plotKDE2d(xx, yy, zz, cname, xtitle, ytitle, labelSize=20, labelPad=-1):
+    '''Plot 2D kernel density estimate (KDE).'''
+
+    fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
+    plt.subplots_adjust(bottom=0.09, left=0.11, top=0.98, right=0.99)
+
+    cmap = plt.get_cmap(cname)
+
+    im = ax.pcolormesh(xx, yy, zz, cmap=cmap)
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.15, pad=0.005)
+    cbar.ax.tick_params(labelsize=labelSize) 
+
+    ax.set_xlabel(xtitle, fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(ytitle, fontsize=labelSize, labelpad=labelPad)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    ax.annotate('Color map: '+cname, (0.15, 0.85), fontsize=16, xycoords='figure fraction')
+
+#----------------------------------------------------------------------------------------------
+def getclist(key=None):
+
+    cmaps = {}
+    
+    cmaps['Perceptually Uniform Sequential'] = [
+                'viridis', 'plasma', 'inferno', 'magma', 'cividis']
+
+    cmaps['Sequential'] = [
+                'Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
+                'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
+                'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
+
+    cmaps['Sequential (2)'] = [
+                'binary', 'gist_yarg', 'gist_gray', 'gray', 'bone', 'pink',
+                'spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia',
+                'hot', 'afmhot', 'gist_heat', 'copper']
+
+
+    clist = []
+    
+    for x in cmaps.values():
+        clist += list(x)
+
+    matches = [x for x in clist if x == key]
+
+    if len(matches):
+        return matches
+
+    return clist
+
+#----------------------------------------------------------------------------------------------
 def plotModelResults(events):
 
     if options.torch_model == None:
@@ -1251,48 +1329,22 @@ def plotModelResults(events):
 
     limPt = 30.0
     limdp = 0.7
-    labelSize = 20
+    labelSize = 22
 
     '''--------------------------------------------
-    Plot predicted q/pT versus simulated q/pT - 2d histogram
+    Plot predicted q/pT versus simulated q/pT - 
+    2d histogram evaluated using kde on regular grid of nbins x nbins
     '''
-    fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
-    plt.subplots_adjust(bottom=0.08, left=0.10, top=0.98, right=0.99)
-    
-    x = amReal
-    y = apReal
 
-    # Evaluate a gaussian kde on a regular grid of nbins x nbins over data extents
-    nbins=150
-    log.info('Compute KDE kernel')
+    nbins=300j
+    xx, yy, zz = makeKDE2d(amReal, apReal, 0.5, -limPt, limPt, -limPt, limPt, nbins, nbins)
 
-    k = kde.gaussian_kde([x,y])
+    xlabel = r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]'
+    ylabel = r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]'
 
-    xi, yi = np.mgrid[-limPt:limPt:nbins*1j, -limPt:limPt:nbins*1j]
-
-    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
-
-    cname = 'YlGn'
-    cmap = plt.get_cmap(cname)
-
-    levels = matplotlib.ticker.MaxNLocator(nbins=25).tick_values(zi.min(), zi.max())
-    norm = matplotlib.colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-
-    zi = np.ma.masked_array(zi, zi < 10e-10)
-    
-    # Make the plot
-    im = ax.pcolormesh(xi, yi, zi.reshape(xi.shape), cmap=cmap, norm=norm, shading='auto')
-
-    cbar = fig.colorbar(im, ax=ax, fraction=0.15, pad=0.005)
-    cbar.ax.tick_params(labelsize=labelSize) 
-
-    ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=labelSize, labelpad=labelPad)
-    ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=labelSize, labelpad=labelPad)
-
-    ax.tick_params(axis='x', labelsize=labelSize)
-    ax.tick_params(axis='y', labelsize=labelSize)
-
-    waitForClick('results_pred_qoverpt_vs_sim_2dhist_'+cname)
+    for cname in getclist():
+        plotKDE2d(xx, yy, zz, cname, xlabel, ylabel, labelSize, labelPad)
+        waitForClick('results_pred_qoverpt_vs_sim_2dhist_'+cname)
 
     '''--------------------------------------------
     Plot predicted q*pT versus simulated q*pT
