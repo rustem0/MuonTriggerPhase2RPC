@@ -28,6 +28,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import statistics as stat
 import numpy as np
+from numpy.lib.npyio import zipfile_factory
 import torch
 import torch.nn as nn
 
@@ -1225,22 +1226,32 @@ def makeKDE2d(x, y, bandwidth, xmin, xmax, ymin, ymax, xbins=100j, ybins=100j, m
     return xx, yy, zz
 
 #----------------------------------------------------------------------------------------------
-def plotKDE2d(data, cname, xtitle, ytitle, labelSize=20, labelPad=-1):
+def plotKDE2d(data, cname, xlabel, ylabel, labelSize=20, labelPad=-1, zlabel=None, zfraction=0.15, zpad=0.005):
     '''Plot 2D kernel density estimate (KDE).'''
 
     xx, yy, zz = data[0], data[1], data[2]
+
+    zlist = []
+
+    for z1 in zz:
+        for z2 in z1:
+            if z2 and z2 > 0.0:
+                zlist += [z2]
 
     fig, ax = make2dFigure(plt, dohist=True)
 
     cmap = plt.get_cmap(cname)
 
-    im = ax.pcolormesh(xx, yy, zz, cmap=cmap)
+    im = ax.pcolormesh(xx, yy, zz, cmap=cmap, norm=matplotlib.colors.LogNorm(vmin=min(zlist), vmax=max(zlist)))
 
-    cbar = fig.colorbar(im, ax=ax, fraction=0.15, pad=0.005)
+    cbar = fig.colorbar(im, ax=ax, fraction=zfraction, pad=zpad)
     cbar.ax.tick_params(labelsize=labelSize) 
 
-    ax.set_xlabel(xtitle, fontsize=labelSize, labelpad=labelPad)
-    ax.set_ylabel(ytitle, fontsize=labelSize, labelpad=labelPad)
+    if zlabel:
+        cbar.set_label(zlabel, size=labelSize)
+
+    ax.set_xlabel(xlabel, fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(ylabel, fontsize=labelSize, labelpad=labelPad)
 
     ax.tick_params(axis='x', labelsize=labelSize)
     ax.tick_params(axis='y', labelsize=labelSize)
@@ -1248,8 +1259,10 @@ def plotKDE2d(data, cname, xtitle, ytitle, labelSize=20, labelPad=-1):
     if options.all_2d_colors:
         ax.annotate('Color map: '+cname, (0.15, 0.85), fontsize=16, xycoords='figure fraction')
 
+    return fig, ax
+
 #----------------------------------------------------------------------------------------------
-def getclist(keys=['gist_yarg', 'BuPu']):
+def getclist(keys=['PuBuGn', 'binary', 'PuBu', 'gist_yarg']):
 
     cmaps = {}
     
@@ -1292,9 +1305,9 @@ def make2dFigure(plt, dohist=False):
     fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
 
     if dohist:
-        plt.subplots_adjust(bottom=0.09, left=0.11, top=0.98, right=0.99)
+        plt.subplots_adjust(bottom=0.09, left=0.12, top=0.98, right=0.99)
     else:
-        plt.subplots_adjust(bottom=0.09, left=0.11, top=0.98, right=0.98)
+        plt.subplots_adjust(bottom=0.09, left=0.12, top=0.98, right=0.98)
 
     return fig, ax
 
@@ -1350,7 +1363,7 @@ def plotModelResults(events):
     labelPad = -1
 
     limPt = 30.0
-    limdp = 0.7
+    limdp = 0.8
     limiPt = 0.3
     labelSize = 22
     nbins=400j
@@ -1393,22 +1406,30 @@ def plotModelResults(events):
 
     # waitForClick('results_pred_qpt_vs_sim')
 
-    # '''--------------------------------------------
-    # Plot predicted q/pT versus simulated q/pT as 2d histogram,
-    # evaluated using kde on regular grid of nbins x nbins
-    # '''
-    # kde2dReal  = makeKDE2d(np.array(realMuonQoverPt),  np.array(realPredQoverPt),  0.002, -limiPt, limiPt, -limiPt, limiPt, nbins, nbins)
-    # kde2dNoise = makeKDE2d(np.array(noiseMuonQoverPt), np.array(noisePredQoverPt), 0.002, -limiPt, limiPt, -limiPt, limiPt, nbins, nbins)
+    '''--------------------------------------------
+    Plot predicted q/pT versus simulated q/pT as 2d histogram,
+    evaluated using kde on regular grid of nbins x nbins
+    '''
+    kde2dReal = makeKDE2d(np.array(realMuonQoverPt),  np.array(realPredQoverPt),  0.005, -limiPt, limiPt, -limiPt, limiPt, 240j, 240j)
 
-    # xlabel = r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
-    # ylabel = r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]'
+    xlabel = r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
+    ylabel = r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]'
+    zlabel = r'Real $\mu$'
 
-    # for cname in getclist():
-    #     plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad)
-    #     waitForClick('results_pred_qoverpt_vs_sim_2dhist_real_'+cname)
+    for cname in getclist():
+        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15)
 
-    #     plotKDE2d(kde2dNoise, cname, xlabel, ylabel, labelSize, labelPad)
-    #     waitForClick('results_pred_qoverpt_vs_sim_2dhist_noise_'+cname)
+        iten = int(0.25*len(noiseMuonQoverPt))
+
+        ax.scatter(noiseMuonQoverPt[0:iten], noisePredQoverPt[0:iten], alpha=0.7, s=2.0, c='orange', label=r'Noise $\mu$')
+
+        ax.set_xlim(-0.3, 0.3)
+        ax.set_ylim(-0.3, 0.3)
+
+        ax.legend(loc='upper left', prop={'size': labelSize}, frameon=True, markerscale=4.0, scatterpoints=1)
+
+        waitForClick('results_pred_qoverpt_vs_sim_qoverpt_2dkde_'+cname)
+
 
     # '''--------------------------------------------
     # Plot predicted q/pT versus simulated q/pT - scatter plot
@@ -1426,8 +1447,8 @@ def plotModelResults(events):
 
     # ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
 
-    # ax.set_ylim(-0.33, 0.33)
-    # ax.set_ylim(-0.33, 0.33)
+    # ax.set_ylim(-0.3, 0.3)
+    # ax.set_ylim(-0.3, 0.3)
 
     # waitForClick('results_pred_qoverpt_vs_sim')
 
@@ -1444,7 +1465,7 @@ def plotModelResults(events):
     rangexy = [[0.0, limPt], [-limdp, limdp]]
 
     fig, ax = make2dFigure(plt)
-    ax.hist2d(np.abs(amReal),  dpReal,  bins=(300, 100), cmap=cmap, range=rangexy)
+    ax.hist2d(np.abs(amReal),  dpReal,  bins=(150, 100), cmap=cmap, range=rangexy)
 
     ax.set_xlabel(xlabel, fontsize=labelSize, labelpad=labelPad)
     ax.set_ylabel(ylabel, fontsize=labelSize, labelpad=labelPad)
@@ -1465,20 +1486,25 @@ def plotModelResults(events):
 
     waitForClick('results_pred_resol_vs_sim_2d_noise')
 
-
     '''--------------------------------------------
     Plot q*pT versus simulated pT as 2d kde histogram,
     evaluated using kde on regular grid of nbins x nbins
     '''
-    kde2dReal  = makeKDE2d(np.abs(amReal),  dpReal,  0.02, 0.0, limPt, -0.5, 0.5, 300j, 100j)
-    kde2dNoise = makeKDE2d(np.abs(amNoise), dpNoise, 0.02, 0.0, limPt, -0.5, 0.5, 300j, 100j)
+    xlabel = r'$1/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
+    ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
+    zlabel = r'Real $\mu$'
+
+    kde2dReal = makeKDE2d(np.abs(np.array(realMuonQoverPt)),  dpReal,  0.005, 0.0, limiPt, -limdp, limdp, 160j, 160j)
 
     for cname in getclist():
-        plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad)
-        waitForClick('results_pred_resol_vs_sim_2dhist_real_'+cname)
+        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.16)
 
-        plotKDE2d(kde2dNoise, cname, xlabel, ylabel, labelSize, labelPad)
-        waitForClick('results_pred_resol_vs_sim_2dhist_noise_'+cname)
+        ax.scatter(np.abs(np.array(noiseMuonQoverPt)), dpNoise, alpha=0.8, s=2.0, c='orange', label=r'Noise $\mu$')
+
+        ax.set_ylim(-limdp, limdp)
+        ax.legend(loc='upper right', prop={'size': labelSize}, frameon=True, markerscale=4.0, scatterpoints=1)
+
+        waitForClick('results_pred_resol_vs_sim_invpt_2dkde_'+cname)
 
     '''--------------------------------------------
     Plot q*pT resolution versus simulated pT as scatter plot
