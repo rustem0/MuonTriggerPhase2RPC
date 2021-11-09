@@ -76,6 +76,7 @@ p.add_option('--logy',            action = 'store_true', default = False, help='
 p.add_option('--veto-noise-cand', action = 'store_true', default = False, help='veto candidates containing noise hits')
 p.add_option('--has-rpc2-noise',  action = 'store_true', default = False, help='require noise hits in RPC2 later for event display')
 p.add_option('--no-out',          action = 'store_true', default = False, help='do not create default output directory and do not write output')
+p.add_option('--all-2d-colors',   action = 'store_true', default = False, help='plot all available 2d color maps')
 
 p.add_option('--outdir', '-o',    type='string',  default = None, help = 'output directory')
 p.add_option('--in-pickle',       type='string',  default = None, help = 'input path for pickle output file')
@@ -1224,11 +1225,12 @@ def makeKDE2d(x, y, bandwidth, xmin, xmax, ymin, ymax, xbins=100j, ybins=100j, m
     return xx, yy, zz
 
 #----------------------------------------------------------------------------------------------
-def plotKDE2d(xx, yy, zz, cname, xtitle, ytitle, labelSize=20, labelPad=-1):
+def plotKDE2d(data, cname, xtitle, ytitle, labelSize=20, labelPad=-1):
     '''Plot 2D kernel density estimate (KDE).'''
 
-    fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
-    plt.subplots_adjust(bottom=0.09, left=0.11, top=0.98, right=0.99)
+    xx, yy, zz = data[0], data[1], data[2]
+
+    fig, ax = make2dFigure(plt, dohist=True)
 
     cmap = plt.get_cmap(cname)
 
@@ -1243,10 +1245,11 @@ def plotKDE2d(xx, yy, zz, cname, xtitle, ytitle, labelSize=20, labelPad=-1):
     ax.tick_params(axis='x', labelsize=labelSize)
     ax.tick_params(axis='y', labelsize=labelSize)
 
-    ax.annotate('Color map: '+cname, (0.15, 0.85), fontsize=16, xycoords='figure fraction')
+    if options.all_2d_colors:
+        ax.annotate('Color map: '+cname, (0.15, 0.85), fontsize=16, xycoords='figure fraction')
 
 #----------------------------------------------------------------------------------------------
-def getclist(key=None):
+def getclist(keys=['gist_yarg', 'BuPu']):
 
     cmaps = {}
     
@@ -1263,18 +1266,37 @@ def getclist(key=None):
                 'spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia',
                 'hot', 'afmhot', 'gist_heat', 'copper']
 
-
     clist = []
     
     for x in cmaps.values():
         clist += list(x)
 
-    matches = [x for x in clist if x == key]
+    if options.all_2d_colors:
+        return clist
+
+    matches = []
+    
+    if type(keys) == str:
+        keys = [keys]
+
+    for key in keys:
+        matches += [x for x in clist if x == key]
 
     if len(matches):
         return matches
 
     return clist
+
+#----------------------------------------------------------------------------------------------
+def make2dFigure(plt, dohist=False):
+    fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
+
+    if dohist:
+        plt.subplots_adjust(bottom=0.09, left=0.11, top=0.98, right=0.99)
+    else:
+        plt.subplots_adjust(bottom=0.09, left=0.11, top=0.98, right=0.98)
+
+    return fig, ax
 
 #----------------------------------------------------------------------------------------------
 def plotModelResults(events):
@@ -1329,82 +1351,146 @@ def plotModelResults(events):
 
     limPt = 30.0
     limdp = 0.7
+    limiPt = 0.3
     labelSize = 22
+    nbins=400j
+
+    # '''--------------------------------------------
+    # Plot predicted q*pT versus simulated q*pT as 2d histogram,
+    # evaluated using kde on regular grid of nbins x nbins
+    # '''
+    # kde2dReal  = makeKDE2d(amReal,  apReal,  0.2, -limPt, limPt, -limPt, limPt, nbins, nbins)
+    # kde2dNoise = makeKDE2d(amNoise, apNoise, 0.2, -limPt, limPt, -limPt, limPt, nbins, nbins)
+
+    # xlabel = r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]'
+    # ylabel = r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]'
+
+    # for cname in getclist():
+    #     plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad)
+    #     waitForClick('results_pred_qpt_vs_sim_2dhist_real_'+cname)
+
+    #     plotKDE2d(kde2dNoise, cname, xlabel, ylabel, labelSize, labelPad)
+    #     waitForClick('results_pred_qpt_vs_sim_2dhist_noise_'+cname)
+
+    # '''--------------------------------------------
+    # Plot predicted q*pT versus simulated q*pT
+    # '''
+    # fig, ax = make2dFigure(plt)
+
+    # ax.scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
+    # ax.scatter(amNoise, apNoise, s=1, label=r'Noise $\mu$', c=noiseColor)
+
+    # ax.set_xlim(-limPt, limPt)
+    # ax.set_ylim(-limPt, limPt)
+
+    # ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=labelSize, labelpad=labelPad)
+    # ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=labelSize, labelpad=labelPad)
+
+    # ax.tick_params(axis='x', labelsize=labelSize)
+    # ax.tick_params(axis='y', labelsize=labelSize)
+
+    # ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+
+    # waitForClick('results_pred_qpt_vs_sim')
+
+    # '''--------------------------------------------
+    # Plot predicted q/pT versus simulated q/pT as 2d histogram,
+    # evaluated using kde on regular grid of nbins x nbins
+    # '''
+    # kde2dReal  = makeKDE2d(np.array(realMuonQoverPt),  np.array(realPredQoverPt),  0.002, -limiPt, limiPt, -limiPt, limiPt, nbins, nbins)
+    # kde2dNoise = makeKDE2d(np.array(noiseMuonQoverPt), np.array(noisePredQoverPt), 0.002, -limiPt, limiPt, -limiPt, limiPt, nbins, nbins)
+
+    # xlabel = r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
+    # ylabel = r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]'
+
+    # for cname in getclist():
+    #     plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad)
+    #     waitForClick('results_pred_qoverpt_vs_sim_2dhist_real_'+cname)
+
+    #     plotKDE2d(kde2dNoise, cname, xlabel, ylabel, labelSize, labelPad)
+    #     waitForClick('results_pred_qoverpt_vs_sim_2dhist_noise_'+cname)
+
+    # '''--------------------------------------------
+    # Plot predicted q/pT versus simulated q/pT - scatter plot
+    # '''
+    # fig, ax = make2dFigure(plt)
+
+    # ax.scatter(realMuonQoverPt,  realPredQoverPt,  s=1, label=r'Pure $\mu$', c=muonColor)
+    # ax.scatter(noiseMuonQoverPt, noisePredQoverPt, s=1, label=r'Noise $\mu$', c=noiseColor)
+
+    # ax.set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=labelSize, labelpad=labelPad)
+    # ax.set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=labelSize, labelpad=labelPad)
+
+    # ax.tick_params(axis='x', labelsize=labelSize)
+    # ax.tick_params(axis='y', labelsize=labelSize)
+
+    # ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+
+    # ax.set_ylim(-0.33, 0.33)
+    # ax.set_ylim(-0.33, 0.33)
+
+    # waitForClick('results_pred_qoverpt_vs_sim')
 
     '''--------------------------------------------
-    Plot predicted q/pT versus simulated q/pT - 
-    2d histogram evaluated using kde on regular grid of nbins x nbins
+    Plot q*pT resolution versus simulated pT as simple 2d histogram
     '''
+    labelPad = 1
+    
+    cmap = plt.get_cmap('BuPu')
 
-    nbins=300j
-    xx, yy, zz = makeKDE2d(amReal, apReal, 0.5, -limPt, limPt, -limPt, limPt, nbins, nbins)
+    xlabel = r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]'
+    ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
 
-    xlabel = r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]'
-    ylabel = r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]'
+    rangexy = [[0.0, limPt], [-limdp, limdp]]
+
+    fig, ax = make2dFigure(plt)
+    ax.hist2d(np.abs(amReal),  dpReal,  bins=(300, 100), cmap=cmap, range=rangexy)
+
+    ax.set_xlabel(xlabel, fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(ylabel, fontsize=labelSize, labelpad=labelPad)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('results_pred_resol_vs_sim_2d_real')
+
+    fig, ax = make2dFigure(plt)
+    ax.hist2d(np.abs(amNoise), dpNoise, bins=(30, 60), cmap=cmap, range=rangexy)
+
+    ax.set_xlabel(xlabel, fontsize=labelSize, labelpad=labelPad)
+    ax.set_ylabel(ylabel, fontsize=labelSize, labelpad=labelPad)
+
+    ax.tick_params(axis='x', labelsize=labelSize)
+    ax.tick_params(axis='y', labelsize=labelSize)
+
+    waitForClick('results_pred_resol_vs_sim_2d_noise')
+
+
+    '''--------------------------------------------
+    Plot q*pT versus simulated pT as 2d kde histogram,
+    evaluated using kde on regular grid of nbins x nbins
+    '''
+    kde2dReal  = makeKDE2d(np.abs(amReal),  dpReal,  0.02, 0.0, limPt, -0.5, 0.5, 300j, 100j)
+    kde2dNoise = makeKDE2d(np.abs(amNoise), dpNoise, 0.02, 0.0, limPt, -0.5, 0.5, 300j, 100j)
 
     for cname in getclist():
-        plotKDE2d(xx, yy, zz, cname, xlabel, ylabel, labelSize, labelPad)
-        waitForClick('results_pred_qoverpt_vs_sim_2dhist_'+cname)
+        plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad)
+        waitForClick('results_pred_resol_vs_sim_2dhist_real_'+cname)
+
+        plotKDE2d(kde2dNoise, cname, xlabel, ylabel, labelSize, labelPad)
+        waitForClick('results_pred_resol_vs_sim_2dhist_noise_'+cname)
 
     '''--------------------------------------------
-    Plot predicted q*pT versus simulated q*pT
-    '''
-    fig, ax = plt.subplots(1, 1, figsize=(10.1, 10))
-    plt.subplots_adjust(bottom=0.08, left=0.09, top=0.98, right=0.98)
-
-    ax.scatter(amReal,  apReal,  s=1, label=r'Pure $\mu$', c=muonColor)
-    ax.scatter(amNoise, apNoise, s=1, label=r'Noise $\mu$', c=noiseColor)
-
-    ax.set_xlim(-limPt, limPt)
-    ax.set_ylim(-limPt, limPt)
-
-    ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=labelSize, labelpad=labelPad)
-    ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=labelSize, labelpad=labelPad)
-
-    ax.tick_params(axis='x', labelsize=labelSize)
-    ax.tick_params(axis='y', labelsize=labelSize)
-
-    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
-
-    waitForClick('results_pred_qpt_vs_sim')
-
-    '''--------------------------------------------
-    Plot predicted q/pT versus simulated q/pT - scatter plot
-    '''
-    fig, ax = plt.subplots(1, 1, figsize=(10.2, 10))
-    plt.subplots_adjust(bottom=0.08, left=0.10, top=0.98, right=0.98)
-
-    ax.scatter(realMuonQoverPt,  realPredQoverPt,  s=1, label=r'Pure $\mu$', c=muonColor)
-    ax.scatter(noiseMuonQoverPt, noisePredQoverPt, s=1, label=r'Noise $\mu$', c=noiseColor)
-
-    ax.set_xlabel(r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]',  fontsize=labelSize, labelpad=labelPad)
-    ax.set_ylabel(r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]', fontsize=labelSize, labelpad=labelPad)
-
-    ax.tick_params(axis='x', labelsize=labelSize)
-    ax.tick_params(axis='y', labelsize=labelSize)
-
-    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
-
-    ax.set_ylim(-0.33, 0.33)
-    ax.set_ylim(-0.33, 0.33)
-
-    waitForClick('results_pred_qoverpt_vs_sim')
-
-    '''--------------------------------------------
-    Plot predicted q/pT resolution versus simulated q/pT
+    Plot q*pT resolution versus simulated pT as scatter plot
     '''
     labelPad = 1
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.97, right=0.97)
+    fig, ax = make2dFigure(plt)
     
     ax.scatter(np.abs(amReal),  dpReal,  s=1, c=muonColor)
     ax.scatter(np.abs(amNoise), dpNoise, s=1, c=noiseColor)
 
     ax.set_ylim(-limdp, limdp)
-
-    xlabel = r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]'
-    ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
 
     ax.set_xlabel(xlabel, fontsize=labelSize, labelpad=labelPad)
     ax.set_ylabel(ylabel, fontsize=labelSize, labelpad=labelPad)
@@ -1421,8 +1507,8 @@ def plotModelResults(events):
     '''
     labelPad = 1
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.97, right=0.97)
+    fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
+    plt.subplots_adjust(bottom=0.09, left=0.13, top=0.98, right=0.99)
 
     ax.hist(dpReal,  bins=dbins, log=options.logy, label=r'Pure $\mu$', color=muonColor)
     ax.hist(dpNoise, bins=dbins, log=options.logy, label=r'Noise $\mu$', color=noiseColor)
