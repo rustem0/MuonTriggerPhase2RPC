@@ -1363,8 +1363,8 @@ def plotModelResults(events):
     labelPad = -1
 
     limPt = 30.0
-    limdp = 0.8
-    limiPt = 0.3
+    limdp = 0.82
+    limiPt = 0.34
     labelSize = 22
     nbins=400j
 
@@ -1398,17 +1398,13 @@ def plotModelResults(events):
 
     # ax.set_xlabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]',  fontsize=labelSize, labelpad=labelPad)
     # ax.set_ylabel(r'$q \cdot p_{\mathrm{T}}^{\mathrm{pred.}}$ [GeV]', fontsize=labelSize, labelpad=labelPad)
+    # ax.set_ylim(-0.3, 0.3)
+    # ax.set_ylim(-0.3, 0.3)
 
-    # ax.tick_params(axis='x', labelsize=labelSize)
-    # ax.tick_params(axis='y', labelsize=labelSize)
-
-    # ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
-
-    # waitForClick('results_pred_qpt_vs_sim')
+    # waitForClick('results_pred_qoverpt_vs_sim')
 
     '''--------------------------------------------
-    Plot predicted q/pT versus simulated q/pT as 2d histogram,
-    evaluated using kde on regular grid of nbins x nbins
+    Plot q*pT resolution versus simulated pT as simple 2d histogram
     '''
     kde2dReal = makeKDE2d(np.array(realMuonQoverPt),  np.array(realPredQoverPt),  0.005, -limiPt, limiPt, -limiPt, limiPt, 240j, 240j)
 
@@ -1417,14 +1413,14 @@ def plotModelResults(events):
     zlabel = r'Real $\mu$'
 
     for cname in getclist():
-        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15)
+        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.16, zpad=0.003)
 
         iten = int(0.25*len(noiseMuonQoverPt))
 
         ax.scatter(noiseMuonQoverPt[0:iten], noisePredQoverPt[0:iten], alpha=0.7, s=2.0, c='orange', label=r'Noise $\mu$')
 
-        ax.set_xlim(-0.3, 0.3)
-        ax.set_ylim(-0.3, 0.3)
+        ax.set_xlim(-limiPt, limiPt)
+        ax.set_ylim(-limiPt, limiPt)
 
         ax.legend(loc='upper left', prop={'size': labelSize}, frameon=True, markerscale=4.0, scatterpoints=1)
 
@@ -1447,8 +1443,8 @@ def plotModelResults(events):
 
     # ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
 
-    # ax.set_ylim(-0.3, 0.3)
-    # ax.set_ylim(-0.3, 0.3)
+    # ax.set_ylim(-limiPt, limiPt)
+    # ax.set_ylim(-limiPt, limiPt)
 
     # waitForClick('results_pred_qoverpt_vs_sim')
 
@@ -1494,14 +1490,16 @@ def plotModelResults(events):
     ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
     zlabel = r'Real $\mu$'
 
-    kde2dReal = makeKDE2d(np.abs(np.array(realMuonQoverPt)),  dpReal,  0.005, 0.0, limiPt, -limdp, limdp, 160j, 160j)
+    kde2dReal = makeKDE2d(np.abs(np.array(realMuonQoverPt)), dpReal,  0.005, 0.0, limiPt, -limdp, limdp, 180j, 240j)
 
     for cname in getclist():
-        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.16)
+        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15, zpad=0.02)
 
         ax.scatter(np.abs(np.array(noiseMuonQoverPt)), dpNoise, alpha=0.8, s=2.0, c='orange', label=r'Noise $\mu$')
 
+        ax.set_xlim(0.02, limiPt)
         ax.set_ylim(-limdp, limdp)
+
         ax.legend(loc='upper right', prop={'size': labelSize}, frameon=True, markerscale=4.0, scatterpoints=1)
 
         waitForClick('results_pred_resol_vs_sim_invpt_2dkde_'+cname)
