@@ -1242,7 +1242,8 @@ def plotKDE2d(data, cname, xlabel, ylabel, labelSize=20, labelPad=-1, zlabel=Non
 
     cmap = plt.get_cmap(cname)
 
-    im = ax.pcolormesh(xx, yy, zz, cmap=cmap, norm=matplotlib.colors.LogNorm(vmin=min(zlist), vmax=max(zlist)))
+    im = ax.pcolormesh(xx, yy, zz, cmap=cmap, norm=matplotlib.colors.LogNorm(vmin=min(zlist), vmax=max(zlist)), linewidth=0, rasterized=True)
+    im.set_edgecolor('face')
 
     cbar = fig.colorbar(im, ax=ax, fraction=zfraction, pad=zpad)
     cbar.ax.tick_params(labelsize=labelSize) 
@@ -1408,8 +1409,8 @@ def plotModelResults(events):
     '''
     kde2dReal = makeKDE2d(np.array(realMuonQoverPt),  np.array(realPredQoverPt),  0.005, -limiPt, limiPt, -limiPt, limiPt, 240j, 240j)
 
-    xlabel = r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
-    ylabel = r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]'
+    xlabel = r'Simulated muon $q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
+    ylabel = r'Simulated muon $q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]'
     zlabel = r'Real $\mu$'
 
     for cname in getclist():
@@ -1486,7 +1487,7 @@ def plotModelResults(events):
     Plot q*pT versus simulated pT as 2d kde histogram,
     evaluated using kde on regular grid of nbins x nbins
     '''
-    xlabel = r'$1/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
+    xlabel = r'Simulated muon $1/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
     ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
     zlabel = r'Real $\mu$'
 
@@ -1815,6 +1816,14 @@ def plotLineDifferences(events):
     deltaz1Dict = collections.defaultdict(list)
     deltaz3Dict = collections.defaultdict(list)
 
+    realMuonPt = []
+    realMuonQoverPt = []
+    realMuonDeltaz3 = []
+
+    noiseMuonPt = []
+    noiseMuonQoverPt = []
+    noiseMuonDeltaz3 = []
+
     for event in events:
         for cand in event.candEvents:
 
@@ -1832,6 +1841,15 @@ def plotLineDifferences(events):
             deltaz3Dict[angleGroup] += [cand.rpc3DeltaZ]
             muonPtDict[angleGroup]  += [cand.muonPt*cand.muonSign]
 
+            if not cand.hasNoiseCluster():
+                realMuonDeltaz3 += [cand.rpc3DeltaZ]
+                realMuonPt += [cand.muonPt*cand.muonSign]
+                realMuonQoverPt += [cand.muonSign/cand.muonPt]
+            else:
+                noiseMuonDeltaz3 += [cand.rpc3DeltaZ]
+                noiseMuonPt += [cand.muonPt*cand.muonSign]
+                noiseMuonQoverPt += [cand.muonSign/cand.muonPt]
+
             #log.info('Angle group={}, muon={}'.format(angleGroup, event.printSimEvent()))
 
     labelDict = {1:r'$85^{\circ} < \angle_{\mathrm{sim.}~\mu} < 70^{\circ}$',
@@ -1842,8 +1860,33 @@ def plotLineDifferences(events):
                  300:r'$50 ^{\circ}< \angle_{\mathrm{sim.}~\mu} < 40^{\circ}$',
                 }
 
-    labelSize = 16
+    labelSize = 20
+    labelPad = 15
     legendSize = 16
+
+    '''--------------------------------------------
+    Plot q*pT versus simulated pT as 2d kde histogram,
+    evaluated using kde on regular grid of nbins x nbins
+    '''
+    xlabel = r'Simulated muon $q/p_{\mathrm{T}}^{\mathrm{sim.}}$'
+    ylabel = r'Noise muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]'
+    zlabel = r'Real $\mu$'
+
+    kde2dReal = makeKDE2d(realMuonQoverPt, realMuonDeltaz3,  0.005, -0.34, 0.34, -0.65, 0.65, 180j, 240j)
+
+    for cname in getclist():
+        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15, zpad=0.02)
+
+        iten = int(0.25*len(noiseMuonQoverPt))
+
+        ax.scatter(noiseMuonQoverPt[0:iten], noiseMuonDeltaz3[0:iten], alpha=0.8, s=2.0, c='orange', label=r'Noise $\mu$')
+
+        ax.set_xlim(-0.33, 0.33)
+        ax.set_ylim(-0.65, 0.65)
+
+        ax.legend(loc='upper right', prop={'size': labelSize}, frameon=True, markerscale=4.0, scatterpoints=1)
+
+        waitForClick('differences_2dkde_RPC3_'+cname)    
 
     '''--------------------------------------------
     Plot differences for RPC1 layer for real muons
@@ -1866,7 +1909,7 @@ def plotLineDifferences(events):
     waitForClick('differences_2d_realmu_RPC1')
 
     '''--------------------------------------------
-    Plot differences for RPC1 layer for real muons
+    Plot differences for RPC3 layer for real muons
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
     plt.subplots_adjust(bottom=0.10, left=0.13, top=0.98, right=0.98)                
@@ -1906,7 +1949,7 @@ def plotLineDifferences(events):
     waitForClick('differences_2d_noisemu_RPC1')
 
     '''--------------------------------------------
-    Plot differences for RPC1 layer for noise muons
+    Plot differences for RPC3 layer for noise muons
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
     plt.subplots_adjust(bottom=0.10, left=0.13, top=0.98, right=0.98)                
