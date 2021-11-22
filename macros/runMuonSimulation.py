@@ -1226,7 +1226,7 @@ def makeKDE2d(x, y, bandwidth, xmin, xmax, ymin, ymax, xbins=100j, ybins=100j, m
     return xx, yy, zz
 
 #----------------------------------------------------------------------------------------------
-def plotKDE2d(data, cname, xlabel, ylabel, labelSize=20, labelPad=-1, zlabel=None, zfraction=0.15, zpad=0.005):
+def plotKDE2d(data, cname, xlabel, ylabel, labelSize=20, labelPad=-1, zlabel=None, zfraction=0.15, zpad=0.005, bottom=0.08):
     '''Plot 2D kernel density estimate (KDE).'''
 
     xx, yy, zz = data[0], data[1], data[2]
@@ -1238,7 +1238,7 @@ def plotKDE2d(data, cname, xlabel, ylabel, labelSize=20, labelPad=-1, zlabel=Non
             if z2 and z2 > 0.0:
                 zlist += [z2]
 
-    fig, ax = make2dFigure(plt, dohist=True)
+    fig, ax = make2dFigure(plt, dohist=True, bottom=bottom)
 
     cmap = plt.get_cmap(cname)
 
@@ -1302,13 +1302,13 @@ def getclist(keys=['PuBuGn', 'binary', 'PuBu', 'gist_yarg']):
     return clist
 
 #----------------------------------------------------------------------------------------------
-def make2dFigure(plt, dohist=False):
+def make2dFigure(plt, dohist=False, bottom=0.09):
     fig, ax = plt.subplots(1, 1, figsize=(11.5, 10))
 
     if dohist:
-        plt.subplots_adjust(bottom=0.09, left=0.12, top=0.98, right=0.99)
+        plt.subplots_adjust(bottom=bottom, left=0.12, top=0.98, right=0.99)
     else:
-        plt.subplots_adjust(bottom=0.09, left=0.12, top=0.98, right=0.98)
+        plt.subplots_adjust(bottom=bottom, left=0.12, top=0.98, right=0.98)
 
     return fig, ax
 
@@ -1869,13 +1869,13 @@ def plotLineDifferences(events):
     evaluated using kde on regular grid of nbins x nbins
     '''
     xlabel = r'Simulated muon $q/p_{\mathrm{T}}^{\mathrm{sim.}}$'
-    ylabel = r'Noise muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]'
+    ylabel = r'Muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]'
     zlabel = r'Real $\mu$'
 
     kde2dReal = makeKDE2d(realMuonQoverPt, realMuonDeltaz3,  0.005, -0.34, 0.34, -0.65, 0.65, 180j, 240j)
 
     for cname in getclist():
-        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15, zpad=0.02)
+        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15, zpad=0.02, bottom=0.10)
 
         iten = int(0.25*len(noiseMuonQoverPt))
 
