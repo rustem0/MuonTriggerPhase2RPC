@@ -1226,7 +1226,7 @@ def makeKDE2d(x, y, bandwidth, xmin, xmax, ymin, ymax, xbins=100j, ybins=100j, m
     return xx, yy, zz
 
 #----------------------------------------------------------------------------------------------
-def plotKDE2d(data, cname, xlabel, ylabel, labelSize=20, labelPad=-1, zlabel=None, zfraction=0.15, zpad=0.005, bottom=0.08):
+def plotKDE2d(data, cname, xlabel, ylabel, labelSize=20, labelPad=-1, zlabel=None, zfraction=0.15, zpad=0.005, bottom=0.09):
     '''Plot 2D kernel density estimate (KDE).'''
 
     xx, yy, zz = data[0], data[1], data[2]
@@ -1409,9 +1409,10 @@ def plotModelResults(events):
     '''
     kde2dReal = makeKDE2d(np.array(realMuonQoverPt),  np.array(realPredQoverPt),  0.005, -limiPt, limiPt, -limiPt, limiPt, 240j, 240j)
 
-    xlabel = r'Simulated muon $q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
-    ylabel = r'Simulated muon $q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]'
+    xlabel = r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
+    ylabel = r'$q/p_{\mathrm{T}}^{\mathrm{pred.}}$ [1/GeV]'
     zlabel = r'Real $\mu$'
+    labelPad = 4
 
     for cname in getclist():
         fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.16, zpad=0.003)
@@ -1458,6 +1459,7 @@ def plotModelResults(events):
 
     xlabel = r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]'
     ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
+    labelPad = -1
 
     rangexy = [[0.0, limPt], [-limdp, limdp]]
 
@@ -1487,9 +1489,10 @@ def plotModelResults(events):
     Plot q*pT versus simulated pT as 2d kde histogram,
     evaluated using kde on regular grid of nbins x nbins
     '''
-    xlabel = r'Simulated muon $1/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
+    xlabel = r'$1/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
     ylabel = r'($q \cdot p_{\mathrm{T}}^{\mathrm{sim.}} - q \cdot p_{\mathrm{T}}^{\mathrm{pred.}})/p_{\mathrm{T}}^{\mathrm{sim.}}$'
     zlabel = r'Real $\mu$'
+    labelPad = 4
 
     kde2dReal = makeKDE2d(np.abs(np.array(realMuonQoverPt)), dpReal,  0.005, 0.0, limiPt, -limdp, limdp, 180j, 240j)
 
@@ -1699,7 +1702,8 @@ def plotEfficiency(events):
     atlasColor = 'tab:orange'
 
     limPt = 30.0
-    labelSize = 17
+    labelSize = 20
+    lineWidth = 2.5
 
     effRealBins, effReal, scaleReal = prepEffPlot(muonQPt, passRealQPt)
     effCandBins, effCand, scaleCand = prepEffPlot(muonQPt, passCandQPt)
@@ -1716,18 +1720,18 @@ def plotEfficiency(events):
     Plot efficiency 
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+    plt.subplots_adjust(bottom=0.11, left=0.10, top=0.98, right=0.98)
 
-    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor)
-    ax.plot(effRealBins, effReal, label=r'Pure $\mu$',  color=muonColor)
-    ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor, linewidth=lineWidth)
+    ax.plot(effRealBins, effReal, label=r'Pure $\mu$',  color=muonColor,  linewidth=lineWidth, linestyle='dashed')
+    ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor, linewidth=lineWidth)
 
     if not options.plot_no_qual:
-        ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor)
-        ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor)
+        ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor, linewidth=lineWidth)
+        ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor, linewidth=lineWidth)
 
-    ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=2)
-    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=2)
+    ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=4)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=3)
 
     ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
 
@@ -1746,31 +1750,31 @@ def plotEfficiency(events):
     Plot efficiency scaled to 70% plateau
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+    plt.subplots_adjust(bottom=0.11, left=0.10, top=0.98, right=0.98)
 
     effRealScaled = [x*scaleReal for x in effReal]
     effCandScaled = [x*scaleCand for x in effCand]
     effBestScaled = [x*scaleBest for x in effBest]
     effGoodScaled = [x*scaleGood for x in effGood]
 
-    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
-    ax.plot(effRealBins, effRealScaled, label=r'Pure $\mu \times {:.3f}$' .format(scaleReal), color=muonColor)
-    ax.plot(effCandBins, effCandScaled, label=r'Incl. $\mu \times {:.3f}$'.format(scaleCand), color=noiseColor)
+    ax.plot(effMU20Bins, effMU20,       label='ATLAS MU20',                                   color=atlasColor, linewidth=lineWidth)
+    ax.plot(effRealBins, effRealScaled, label=r'Pure $\mu \times {:.3f}$' .format(scaleReal), color=muonColor,  linewidth=lineWidth, linestyle='dashed')
+    ax.plot(effCandBins, effCandScaled, label=r'Incl. $\mu \times {:.3f}$'.format(scaleCand), color=noiseColor, linewidth=lineWidth)
 
     if not options.plot_no_qual:
-        ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 for incl. $\mu \times {:.3f}$' .format(scaleBest), color=bestColor)
-        ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 for incl. $\mu \times {:.3f}$' .format(scaleGood), color=goodColor)
-
-    ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=4)
-    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=2)
-
-    ax.legend(loc='best', prop={'size': labelSize}, frameon=False)
+        ax.plot(effBestBins, effBestScaled, label=r'Qual. 1 for incl. $\mu \times {:.3f}$' .format(scaleBest), color=bestColor, linewidth=lineWidth)
+        ax.plot(effGoodBins, effGoodScaled, label=r'Qual. 2 for incl. $\mu \times {:.3f}$' .format(scaleGood), color=goodColor, linewidth=lineWidth)
 
     ax.xaxis.grid(True)
     ax.yaxis.grid(True)
 
     ax.set_xlim(3.0, limPt)
-    ax.set_ylim(0.0, 80.0)
+    ax.set_ylim(0.0, 78.5)
+
+    ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=4)
+    ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=3)
+
+    ax.legend(loc='upper left', prop={'size': labelSize}, frameon=False)    
 
     ax.tick_params(axis='x', labelsize=labelSize)
     ax.tick_params(axis='y', labelsize=labelSize)
@@ -1781,15 +1785,15 @@ def plotEfficiency(events):
     Plot zoomed y-axis efficiency plots
     '''
     fig, ax = plt.subplots(figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+    plt.subplots_adjust(bottom=0.11, left=0.10, top=0.98, right=0.98)
 
-    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20', color=atlasColor)
-    ax.plot(effRealBins, effReal, label=r'Pure $\mu$', color=muonColor)
-    ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor)
+    ax.plot(effMU20Bins, effMU20, label='ATLAS MU20',   color=atlasColor, linewidth=lineWidth)
+    ax.plot(effRealBins, effReal, label=r'Pure $\mu$',  color=muonColor,  linewidth=lineWidth, linestyle='dashed')
+    ax.plot(effCandBins, effCand, label=r'Incl. $\mu$', color=noiseColor, linewidth=lineWidth)
 
     if not options.plot_no_qual:
-        ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor)
-        ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor)
+        ax.plot(effBestBins, effBest, label=r'Qual. 1 for incl. $\mu$', color=bestColor, linewidth=lineWidth)
+        ax.plot(effGoodBins, effGood, label=r'Qual. 2 for incl. $\mu$', color=goodColor, linewidth=lineWidth)
 
     ax.set_ylabel('Efficiency [%]',  fontsize=labelSize, labelpad=2)
     ax.set_xlabel(r'$p_{\mathrm{T}}^{\mathrm{sim.}}$ [GeV]', fontsize=labelSize, labelpad=2)
@@ -1860,22 +1864,22 @@ def plotLineDifferences(events):
                  300:r'$50 ^{\circ}< \angle_{\mathrm{sim.}~\mu} < 40^{\circ}$',
                 }
 
-    labelSize = 20
-    labelPad = 15
-    legendSize = 16
+    labelSize = 22
+    labelPad = 4
+    legendSize = 22
 
     '''--------------------------------------------
-    Plot q*pT versus simulated pT as 2d kde histogram,
+    Plot predicted q/pT versus simulated q/pT as 2d kde histogram,
     evaluated using kde on regular grid of nbins x nbins
     '''
-    xlabel = r'Simulated muon $q/p_{\mathrm{T}}^{\mathrm{sim.}}$'
+    xlabel = r'$q/p_{\mathrm{T}}^{\mathrm{sim.}}$ [1/GeV]'
     ylabel = r'Muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]'
     zlabel = r'Real $\mu$'
 
     kde2dReal = makeKDE2d(realMuonQoverPt, realMuonDeltaz3,  0.005, -0.34, 0.34, -0.65, 0.65, 180j, 240j)
 
     for cname in getclist():
-        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15, zpad=0.02, bottom=0.10)
+        fig, ax = plotKDE2d(kde2dReal, cname, xlabel, ylabel, labelSize, labelPad, zlabel=zlabel, zfraction=0.15, zpad=0.003, bottom=0.09)
 
         iten = int(0.25*len(noiseMuonQoverPt))
 
@@ -1898,7 +1902,7 @@ def plotLineDifferences(events):
         log.info('RPC1 angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
         ax.scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10, label=labelDict[i])
 
-    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_xlabel(r'$q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
     ax.set_ylabel(r'Pure muon RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
 
     ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
@@ -1918,7 +1922,7 @@ def plotLineDifferences(events):
         log.info('RPC3 angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
         ax.scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10, label=labelDict[i])
 
-    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_xlabel(r'$q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
     ax.set_ylabel(r'Pure muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
 
     ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
@@ -1938,7 +1942,7 @@ def plotLineDifferences(events):
         log.info('Angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
         ax.scatter(muonPtDict[i], deltaz1Dict[i], marker='.', s=10)
 
-    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_xlabel(r'$q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
     ax.set_ylabel(r'Noise muon RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
 
     ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
@@ -1958,7 +1962,7 @@ def plotLineDifferences(events):
         log.info('Angle group = {} contains {} events label={}'.format(i, len(muonPtDict[i]), labelDict[i]))
         ax.scatter(muonPtDict[i], deltaz3Dict[i], marker='.', s=10)
 
-    ax.set_xlabel(r'Simulated muon $q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
+    ax.set_xlabel(r'$q\times p_{\mathrm{T}}^{\mathrm{sim.}}$', fontsize=labelSize)
     ax.set_ylabel(r'Noise muon RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
 
     ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
@@ -2013,8 +2017,8 @@ def plotCandEvents(events):
     zbins3 = [b*0.014 for b in range(-50, 50)]
     sbins  = [b*0.25  for b in range(  0, 40)]
 
-    labelSize = 16
-    legendSize = 16
+    labelSize = 20
+    legendSize = 20
 
     '''--------------------------------------------
     Plot number of candidates
@@ -2058,15 +2062,17 @@ def plotCandEvents(events):
     Plot RPC1 cluster differences
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+    plt.subplots_adjust(bottom=0.115, left=0.10, top=0.98, right=0.98)
 
-    ax.hist(deltaz1Neg,   log=options.logy, bins=zbins1, color='blue', label=r'Pure $+\mu$')
-    ax.hist(deltaz1Pos,   log=options.logy, bins=zbins1, color='red',  label=r'Pure $-\mu$')
-    ax.hist(deltaz1Noise, log=options.logy, bins=zbins1, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2)
+    ax.hist(deltaz1Neg,   log=options.logy, bins=zbins1, color='blue',        label=r'Pure $+\mu$', histtype='step', linewidth=2.5)
+    ax.hist(deltaz1Pos,   log=options.logy, bins=zbins1, color='red',         label=r'Pure $-\mu$', histtype='step', linewidth=2.5)
+    ax.hist(deltaz1Noise, log=options.logy, bins=zbins1, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2.5)
 
     ax.set_xlabel(r'RPC1 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
     ax.set_ylabel('Muon candidates', fontsize=labelSize)
     ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
+
+    ax.set_ylim(bottom=3.0)
 
     ax.tick_params(axis='x', labelsize=labelSize)
     ax.tick_params(axis='y', labelsize=labelSize)
@@ -2077,16 +2083,18 @@ def plotCandEvents(events):
     Plot RPC1 cluster differences
     '''
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    plt.subplots_adjust(bottom=0.10, left=0.10, top=0.98, right=0.98)
+    plt.subplots_adjust(bottom=0.115, left=0.10, top=0.98, right=0.98)
 
-    ax.hist(deltaz3Neg,   log=options.logy, bins=zbins3, color='blue', label=r'Pure $+\mu$')
-    ax.hist(deltaz3Pos,   log=options.logy, bins=zbins3, color='red',  label=r'Pure $-\mu$')
-    ax.hist(deltaz3Noise, log=options.logy, bins=zbins3, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2)
+    ax.hist(deltaz3Neg,   log=options.logy, bins=zbins3, color='blue',        label=r'Pure $+\mu$', histtype='step', linewidth=2.5)
+    ax.hist(deltaz3Pos,   log=options.logy, bins=zbins3, color='red',         label=r'Pure $-\mu$', histtype='step', linewidth=2.5)
+    ax.hist(deltaz3Noise, log=options.logy, bins=zbins3, color='yellowgreen', label=r'Noise $\mu$', histtype='step', linewidth=2.5)
 
     ax.set_xlabel(r'RPC3 $z_{\mathrm{line}} - z_{\mathrm{cluster}}$ [m]', fontsize=labelSize)
     ax.set_ylabel('Muon candidates', fontsize=labelSize)
 
     ax.legend(loc='best', prop={'size': legendSize}, frameon=False)
+
+    ax.set_ylim(bottom=3.0)
 
     ax.tick_params(axis='x', labelsize=labelSize)
     ax.tick_params(axis='y', labelsize=labelSize)
@@ -2457,8 +2465,8 @@ def drawEvent(event, candEvent=None):
     miny =  6.5
     maxy = 10.1
     yoff = 0.011
-    labelSize = 15
-    titleSize = 20
+    labelSize = 22
+    titleSize = 22
 
     zatminy = min([event.path.getZatY(miny), event.path.getLinearZatY(miny)])
     zatmaxy = max([event.path.getZatY(maxy), event.path.getLinearZatY(maxy)])
@@ -2493,10 +2501,12 @@ def drawEvent(event, candEvent=None):
     # Draw RPC layers
     #
     fig, ax = plt.subplots(figsize=(15, 11))
-    plt.subplots_adjust(hspace=0.0, bottom=0.06, left=0.07, top=0.97, right=0.99)
+    plt.subplots_adjust(hspace=0.0, bottom=0.07, left=0.09, top=0.97, right=0.99)
 
     fig.canvas.set_window_title(eventName)
-    ax.set_title('RPC toy simulation', fontsize=labelSize)
+
+    if options.draw_opt.count('toy'):
+        ax.set_title('RPC toy simulation', fontsize=labelSize)
 
     layerRPC12.plotLayer(ax, yoffset=+yoff)
     layerRPC11.plotLayer(ax, yoffset=-yoff, showStrips=True, stripOffset=0.01)
@@ -2507,9 +2517,9 @@ def drawEvent(event, candEvent=None):
     layerRPC32.plotLayer(ax, yoffset=+yoff)
     layerRPC31.plotLayer(ax, yoffset=-yoff, showStrips=True, stripOffset=0.01)
 
-    ax.annotate('RPC1 doublet', (minz + 0.007*(maxz-minz), layerRPC12.y + 0.04), fontsize=labelSize)
-    ax.annotate('RPC2 doublet', (minz + 0.007*(maxz-minz), layerRPC22.y + 0.04), fontsize=labelSize)
-    ax.annotate('RPC3 doublet', (minz + 0.007*(maxz-minz), layerRPC32.y + 0.04), fontsize=labelSize)
+    ax.annotate('RPC1 doublet', (maxz - 0.17*(maxz-minz), layerRPC12.y + 0.04), fontsize=labelSize)
+    ax.annotate('RPC2 doublet', (maxz - 0.17*(maxz-minz), layerRPC22.y + 0.04), fontsize=labelSize)
+    ax.annotate('RPC3 doublet', (minz + 0.012*(maxz-minz), layerRPC32.y + 0.04), fontsize=labelSize)
 
     #
     # Draw event
@@ -2564,8 +2574,8 @@ def drawEvent(event, candEvent=None):
 
     ax.plot(zarr, yarr, color='red', linewidth=1, label=r'Sim. muon $q \cdot p_{\mathrm{T}}$' + r' = {0: >4.1f} GeV'.format(event.muonPt*event.muonSign))
 
-    ax.set_xlabel('Beam axis z [m]', fontsize=titleSize, labelpad=3)
-    ax.set_ylabel('Radial y [m]',    fontsize=titleSize, labelpad=3)
+    ax.set_xlabel('Beam axis z [m]', fontsize=titleSize, labelpad=4)
+    ax.set_ylabel('Radial y [m]',    fontsize=titleSize, labelpad=4)
 
     ax.tick_params(axis='x', labelsize=labelSize)
     ax.tick_params(axis='y', labelsize=labelSize)
